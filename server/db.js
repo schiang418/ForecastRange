@@ -52,4 +52,32 @@ async function ensureIVHistoryTable() {
   console.log('[db] iv_history table ensured');
 }
 
-module.exports = { getDb, getEasternDate, ensureIVHistoryTable };
+/**
+ * Ensure users and watchlist tables exist.
+ */
+let authTablesEnsured = false;
+async function ensureAuthTables() {
+  if (authTablesEnsured) return;
+  const db = getDb();
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS users (
+       id SERIAL PRIMARY KEY,
+       provider VARCHAR(20) NOT NULL,
+       provider_id VARCHAR(255) NOT NULL,
+       email VARCHAR(255),
+       name VARCHAR(255),
+       created_at TIMESTAMP DEFAULT NOW() NOT NULL
+     )`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS users_provider_idx ON users (provider, provider_id)`);
+
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS watchlist (
+       id SERIAL PRIMARY KEY,
+       user_id INTEGER NOT NULL,
+       ticker VARCHAR(20) NOT NULL,
+       added_at TIMESTAMP DEFAULT NOW() NOT NULL
+     )`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS watchlist_user_ticker_idx ON watchlist (user_id, ticker)`);
+  authTablesEnsured = true;
+  console.log('[db] users + watchlist tables ensured');
+}
+
+module.exports = { getDb, getEasternDate, ensureIVHistoryTable, ensureAuthTables };
