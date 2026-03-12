@@ -96,16 +96,16 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars) {
       ivPercentile = Math.round((belowCount / annualizedValues.length) * 100);
     }
 
-    // IV Rank against RV history range
+    // IV Rank against RV history range (not expanded by currentIV)
+    // This shows where IV sits relative to the historical RV range.
+    // Can exceed 100% conceptually but is clamped — values near 100 mean
+    // IV is at or above the highest RV seen in the lookback window.
     if (rvHistory.length >= 20) {
       const annualizedValues = rvHistory.map(r => r.rvAnnualized);
       const rvMin = Math.min(...annualizedValues);
       const rvMax = Math.max(...annualizedValues);
-      // Use a slightly expanded range to account for IV typically being higher than RV
-      const rangeMax = Math.max(rvMax, currentIV);
-      const rangeMin = rvMin;
-      if (rangeMax > rangeMin) {
-        ivRank = Math.round(((currentIV - rangeMin) / (rangeMax - rangeMin)) * 100);
+      if (rvMax > rvMin) {
+        ivRank = Math.round(((currentIV - rvMin) / (rvMax - rvMin)) * 100);
         ivRank = Math.max(0, Math.min(100, ivRank));
       }
     }
