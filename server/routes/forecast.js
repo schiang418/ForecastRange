@@ -1,6 +1,9 @@
 const express = require('express');
-const { fetchDailyBars, fetchOptionsChain } = require('../../src/polygon');
+const { fetchDailyBars, fetchOptionsChain, extractAtmIV } = require('../../src/polygon');
 const { computeForecast } = require('../../src/forecast');
+const { upsertIV, getIVHistory } = require('../ivHistory');
+const { autoBackfillIfNeeded } = require('../ivBackfill');
+const { getEasternDate } = require('../db');
 
 const router = express.Router();
 
@@ -52,11 +55,41 @@ router.post('/', async (req, res) => {
 
     console.log(`[forecast] ${cleanTicker}: ${bars.length} bars, ${optionsChain ? optionsChain.length : 0} option contracts`);
 
+    const spot = bars[bars.length - 1].c;
+
+    // Auto-backfill IV history if this ticker has < 30 rows.
+    // This runs synchronously on first request so the forecast immediately
+    // benefits from the synthetic IV history for percentile calculations.
+    try {
+      await autoBackfillIfNeeded(cleanTicker, bars, optionsChain, spot);
+    } catch (err) {
+      console.warn(`[forecast] Auto-backfill failed for ${cleanTicker}: ${err.message}`);
+    }
+
+    // Fetch IV history from DB for true IV percentile calculation
+    let ivHistoryRows = null;
+    try {
+      ivHistoryRows = await getIVHistory(cleanTicker, 252);
+      console.log(`[forecast] ${cleanTicker}: ${ivHistoryRows.length} IV history rows`);
+    } catch (err) {
+      console.warn(`[forecast] IV history fetch failed for ${cleanTicker}: ${err.message}`);
+    }
+
     // Compute forecast
     const result = computeForecast(bars, optionsChain, {
       horizons: horizons || [1, 2, 3, 4],
       ticker: cleanTicker,
+      ivHistoryRows,
     });
+
+    // Store today's IV snapshot for future percentile calculations (fire-and-forget)
+    if (result.ivTermStructure && result.ivTermStructure.length > 0) {
+      const todayIV = result.ivTermStructure[0].iv; // nearest-expiration ATM IV
+      const today = getEasternDate();
+      upsertIV(cleanTicker, today, todayIV, 'live').catch(err => {
+        console.warn(`[forecast] IV snapshot store failed for ${cleanTicker}: ${err.message}`);
+      });
+    }
 
     if (result.error) {
       return res.status(400).json({ error: result.error });

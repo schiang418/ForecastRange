@@ -317,7 +317,7 @@ function skewLabel(drift, spot) {
  *
  * @param {Array} bars - OHLCV bars sorted ascending
  * @param {Array|null} optionsChain - Options chain snapshot from Polygon.io (or null)
- * @param {Object} options - { horizons: [1,2,3,4] }
+ * @param {Object} options - { horizons: [1,2,3,4], ivHistoryRows: [{date, iv}] }
  * @returns {Object} Full forecast result
  */
 function computeForecast(bars, optionsChain = null, options = {}) {
@@ -556,6 +556,7 @@ function computeForecast(bars, optionsChain = null, options = {}) {
       expirationIVs && expirationIVs.length > 0 ? expirationIVs[0].iv : null,
       rv20,
       bars,
+      options.ivHistoryRows || null,
     ),
     horizons: forecastHorizons,
   };
