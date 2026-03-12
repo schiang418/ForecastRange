@@ -176,7 +176,7 @@ export default function ForecastSection() {
                   </div>
                   {/* Regime */}
                   <div>
-                    <div className="text-xs text-dim mb-1 cursor-help" title="Volatility regime based on current RV vs median historical RV. Extreme: >2x median, Elevated: >1.5x, Normal: 0.8-1.5x, Compressed: <0.8x.">Vol Regime</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Volatility regime based on current RV vs median historical RV, adjusted by IV percentile when available. Extreme: RV >2x median, Elevated: >1.5x, Normal: 0.8-1.5x, Compressed: <0.8x. If RV is compressed but IV pctl ≥70%, regime upgrades to Normal (market expects vol expansion).">Vol Regime</div>
                     <div className={`text-lg font-medium capitalize ${regimeColor}`}>{vm.regime}</div>
                   </div>
                 </div>
@@ -184,7 +184,7 @@ export default function ForecastSection() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                   {/* IV Percentile */}
                   <div>
-                    <div className="text-xs text-dim mb-1 cursor-help" title="Percentage of historical RV values below current IV. Higher = IV is richer than usual = better for premium selling. ≥75% is attractive.">IV Percentile ({vm.rvHistoryDays}d)</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Percentage of historical RV values below current IV (approximation — no historical IV data available). Higher = IV is richer than usual. ≥75% is attractive for premium selling.">IV Percentile ({vm.rvHistoryDays}d)</div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
                         <div
@@ -197,7 +197,7 @@ export default function ForecastSection() {
                   </div>
                   {/* IV Rank */}
                   <div>
-                    <div className="text-xs text-dim mb-1 cursor-help" title="Where current IV sits in the historical min-max RV range. 0% = at the lowest, 100% = at the highest. Useful for gauging IV relative to its recent range.">IV Rank ({vm.rvHistoryDays}d)</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Where current IV sits in the historical min-max RV range (approximation — no historical IV data). 0% = at RV floor, 100% = at or above RV ceiling. Both IV metrics use RV history as proxy, so they tend to correlate.">IV Rank ({vm.rvHistoryDays}d)</div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
                         <div

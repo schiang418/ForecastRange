@@ -96,23 +96,23 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars) {
       ivPercentile = Math.round((belowCount / annualizedValues.length) * 100);
     }
 
-    // IV Rank against RV history range
+    // IV Rank against RV history range (not expanded by currentIV)
+    // This shows where IV sits relative to the historical RV range.
+    // Can exceed 100% conceptually but is clamped — values near 100 mean
+    // IV is at or above the highest RV seen in the lookback window.
     if (rvHistory.length >= 20) {
       const annualizedValues = rvHistory.map(r => r.rvAnnualized);
       const rvMin = Math.min(...annualizedValues);
       const rvMax = Math.max(...annualizedValues);
-      // Use a slightly expanded range to account for IV typically being higher than RV
-      const rangeMax = Math.max(rvMax, currentIV);
-      const rangeMin = rvMin;
-      if (rangeMax > rangeMin) {
-        ivRank = Math.round(((currentIV - rangeMin) / (rangeMax - rangeMin)) * 100);
+      if (rvMax > rvMin) {
+        ivRank = Math.round(((currentIV - rvMin) / (rvMax - rvMin)) * 100);
         ivRank = Math.max(0, Math.min(100, ivRank));
       }
     }
   }
 
   // --- Volatility Regime ---
-  const regime = computeVolRegime(rv20Annualized, rvHistory);
+  const regime = computeVolRegime(rv20Annualized, rvHistory, currentIV, ivPercentile);
 
   // --- Premium Quality Score (0-100) ---
   // Only meaningful when IV is available
@@ -165,18 +165,33 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars) {
 }
 
 /**
- * Determine volatility regime from current RV and history.
+ * Determine volatility regime from current RV, history, and IV context.
+ * When IV is available, blends RV regime with IV percentile to avoid
+ * misleading labels (e.g. "compressed" when RV is low but IV is at 100th pctl).
  */
-function computeVolRegime(rvAnnualized, rvHistory) {
+function computeVolRegime(rvAnnualized, rvHistory, currentIV, ivPercentile) {
   if (rvHistory.length < 20) return 'unknown';
   const annualizedValues = rvHistory.map(r => r.rvAnnualized);
   const med = median(annualizedValues);
-  const ratio = rvAnnualized / med;
+  const rvRatio = rvAnnualized / med;
 
-  if (ratio > 2.0) return 'extreme';
-  if (ratio > 1.5) return 'elevated';
-  if (ratio > 0.8) return 'normal';
-  return 'compressed';
+  // Pure RV regime
+  let rvRegime;
+  if (rvRatio > 2.0) rvRegime = 'extreme';
+  else if (rvRatio > 1.5) rvRegime = 'elevated';
+  else if (rvRatio > 0.8) rvRegime = 'normal';
+  else rvRegime = 'compressed';
+
+  // If no IV data, use RV-only regime
+  if (currentIV == null || ivPercentile == null) return rvRegime;
+
+  // When IV and RV disagree significantly, adjust the label:
+  // - RV says compressed but IV is high → "normal" (market expects vol expansion)
+  // - RV says extreme but IV is low → "elevated" (vol spike may not persist)
+  if (rvRegime === 'compressed' && ivPercentile >= 70) return 'normal';
+  if (rvRegime === 'extreme' && ivPercentile <= 30) return 'elevated';
+
+  return rvRegime;
 }
 
 /**
