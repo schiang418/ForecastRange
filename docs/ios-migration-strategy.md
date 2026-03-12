@@ -119,21 +119,23 @@ React Native offers the best balance of development speed, code reuse, and nativ
 └───────────────┼──────────────────────────────┘
                 │ HTTPS
                 ▼
-┌───────────────────────────────────────────────┐
-│         Hosted Backend (Node.js/Express)       │
-│                                                │
-│  /api/forecast   /api/compare   /api/spreads   │
-│         │              │              │         │
-│    ┌────┴──────────────┴──────────────┘         │
-│    │  Core Forecast Engine (src/)               │
-│    │  Polygon.io ↔ PostgreSQL ↔ Claude API     │
-│    └────────────────────────────────────────    │
-└────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│    Existing Railway Deployment (Node.js/Express)   │
+│    + PostgreSQL (Railway)                          │
+│                                                    │
+│  /api/forecast   /api/compare   /api/spreads       │
+│  /api/auth (new) /api/watchlist (new)              │
+│         │              │              │             │
+│    ┌────┴──────────────┴──────────────┘             │
+│    │  Core Forecast Engine (src/)                   │
+│    │  Polygon.io ↔ PostgreSQL ↔ Claude API         │
+│    └────────────────────────────────────────        │
+└────────────────────────────────────────────────────┘
 ```
 
 ### Key Architectural Decisions
 
-1. **Keep the backend hosted** — The forecast engine depends on Polygon.io, PostgreSQL, and Claude API. Running this on-device is impractical. Host the Express server on a cloud provider (Railway, Render, Fly.io, or AWS).
+1. **Backend already hosted on Railway** — The web app and PostgreSQL database are already deployed on Railway. The iOS app can point directly at the existing backend API. No new hosting setup needed — just add iOS-specific endpoints (auth, watchlist, push notifications) to the existing server.
 
 2. **Thin client** — The iOS app is a presentation layer that calls the existing REST API. This keeps the app lightweight and allows server-side updates without app releases.
 
@@ -153,7 +155,7 @@ React Native offers the best balance of development speed, code reuse, and nativ
 | Task | Details | Effort |
 |------|---------|--------|
 | Project setup | React Native + TypeScript + navigation (React Navigation) | 2 days |
-| Backend deployment | Deploy existing Express server to cloud (Railway/Render) | 1 day |
+| Backend config | Add iOS API endpoints to existing Railway deployment | 0.5 days |
 | API client | Port `api.ts` to React Native with proper error handling | 1 day |
 | Authentication | Add JWT auth to backend + login/signup screens | 3–4 days |
 | Environment config | API keys, base URLs, env management | 0.5 days |
@@ -287,11 +289,11 @@ The existing Express backend needs these additions to support the iOS app:
 - API versioning (e.g., `/api/v1/forecast`)
 - Input sanitization (already partially present)
 
-### 8.5 Hosting Requirements
-- **Cloud provider:** Railway, Render, Fly.io, or AWS ECS
-- **Database:** Managed PostgreSQL (Neon, Supabase, or provider's offering)
-- **Estimated cost:** $20–50/month for low-traffic; scales with users
-- **Domain + SSL:** Required for iOS ATS compliance
+### 8.5 Hosting (Already on Railway)
+- **Current setup:** Web app + Express backend + PostgreSQL already deployed on Railway
+- **For iOS:** No new hosting needed — add new routes to existing server, push to Railway
+- **Scaling consideration:** Monitor Railway usage as mobile users increase; may need to upgrade plan
+- **Domain + SSL:** Railway provides HTTPS by default; ensure custom domain is configured for iOS ATS compliance
 
 ---
 
