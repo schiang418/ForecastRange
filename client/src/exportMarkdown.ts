@@ -11,6 +11,19 @@ function sign(v: number): string {
   return v > 0 ? '+' : '';
 }
 
+function blendKeyLabel(h: ForecastHorizon, key: string): string {
+  if (key === 'options') return h.optionsSource === 'straddle' ? 'STRADDLE' : 'IV';
+  return key.toUpperCase();
+}
+
+function blendKeyMove(h: ForecastHorizon, key: string): number {
+  if (key === 'options') return (h.optionsSource === 'straddle' ? h.components.straddleMove : h.components.ivMove) ?? 0;
+  if (key === 'atr') return h.components.atrMove;
+  if (key === 'rv') return h.components.rvMove;
+  if (key === 'structure') return h.components.structureMove;
+  return 0;
+}
+
 function horizonSection(h: ForecastHorizon, result: ForecastResult): string {
   const spot = result.spot;
   const ind = result.indicators;
@@ -39,8 +52,71 @@ function horizonSection(h: ForecastHorizon, result: ForecastResult): string {
     lines.push(`             = $${spot.toFixed(2)} × ${(h.ivUsed * 100).toFixed(2)}% × sqrt(${h.horizonDays} / 252)`);
     lines.push(`             = $${spot.toFixed(2)} × ${h.ivUsed.toFixed(6)} × ${Math.sqrt(h.horizonDays / 252).toFixed(6)}`);
     lines.push(`             = $${h.components.ivMove.toFixed(2)}`);
+    if (h.ivTermStructure?.interpolated) {
+      lines.push('');
+      lines.push(`  IV term structure interpolation:`);
+      lines.push(`    before: ${h.ivTermStructure.beforeExp} (IV=${((h.ivTermStructure.beforeIV ?? 0) * 100).toFixed(1)}%)`);
+      lines.push(`    after:  ${h.ivTermStructure.afterExp} (IV=${((h.ivTermStructure.afterIV ?? 0) * 100).toFixed(1)}%)`);
+      lines.push(`    t = ${h.ivTermStructure.t}  →  interpolated IV = ${(h.ivUsed * 100).toFixed(2)}%`);
+    }
   }
   lines.push('```');
+  lines.push('');
+
+  // Straddle expected move
+  if (h.components.straddleMove != null && h.straddleInfo) {
+    lines.push('### Step 1b: Straddle Expected Move (Market-Implied)');
+    lines.push('');
+    lines.push('```');
+    if (h.straddleInfo.callMid != null && h.straddleInfo.putMid != null) {
+      lines.push(`ATM strike     = $${h.straddleInfo.strike?.toFixed(2)}`);
+      lines.push(`Call mid       = $${h.straddleInfo.callMid.toFixed(2)}`);
+      lines.push(`Put mid        = $${h.straddleInfo.putMid.toFixed(2)}`);
+      lines.push(`Straddle       = $${h.straddleInfo.callMid.toFixed(2)} + $${h.straddleInfo.putMid.toFixed(2)} = $${h.straddleInfo.straddle?.toFixed(2)}`);
+      lines.push(`Expected move  = 0.85 × $${h.straddleInfo.straddle?.toFixed(2)} = $${h.components.straddleMove.toFixed(2)}`);
+    } else {
+      lines.push(`Expected move  = $${h.components.straddleMove.toFixed(2)}`);
+    }
+    lines.push(`Source         = ${h.straddleInfo.source}`);
+    lines.push(`Expiration     = ${h.straddleInfo.expiration}`);
+    if (h.straddleInfo.scaleFactor != null) {
+      lines.push(`Scale factor   = ${h.straddleInfo.scaleFactor} (sqrt-time scaling to target horizon)`);
+    }
+    if (h.optionsSource === 'straddle') {
+      lines.push('');
+      lines.push(`→ Using straddle (market-implied) instead of IV×sqrt(t) for options blend component`);
+    }
+    lines.push('```');
+    lines.push('');
+  }
+
+  // S/R Structure
+  lines.push('### Step 1c: Support/Resistance Structure');
+  lines.push('');
+  lines.push('```');
+  lines.push(`Lookback: ${h.structureData.lookbackDays} bars`);
+  if (h.structureData.resistance) {
+    lines.push(`Resistance: $${h.structureData.resistance.price.toFixed(2)} (${h.structureData.resistance.type}${h.structureData.resistance.date ? ', ' + h.structureData.resistance.date : ''})`);
+    lines.push(`  distance: $${h.structureData.distToResistance?.toFixed(2)}`);
+  } else {
+    lines.push(`Resistance: none detected in lookback window`);
+  }
+  if (h.structureData.support) {
+    lines.push(`Support:    $${h.structureData.support.price.toFixed(2)} (${h.structureData.support.type}${h.structureData.support.date ? ', ' + h.structureData.support.date : ''})`);
+    lines.push(`  distance: $${h.structureData.distToSupport?.toFixed(2)}`);
+  } else {
+    lines.push(`Support:    none detected in lookback window`);
+  }
+  lines.push(`Structure move = avg(distToSupport, distToResistance) = $${h.components.structureMove.toFixed(2)}`);
+  lines.push('```');
+  if (h.structureData.levels.length > 0) {
+    lines.push('');
+    lines.push('All detected levels:');
+    lines.push('');
+    for (const l of h.structureData.levels) {
+      lines.push(`- ${l.side === 'resistance' ? '▲' : '▼'} $${l.price.toFixed(2)} (${l.type}${l.date ? ', ' + l.date : ''})`);
+    }
+  }
   lines.push('');
 
   // Blending
@@ -52,10 +128,8 @@ function horizonSection(h: ForecastHorizon, result: ForecastResult): string {
   const parts: string[] = [];
   for (const [key, contribution] of Object.entries(h.blending.contributions)) {
     const weight = h.blending.weights[key];
-    const rawMove = key === 'iv' ? h.components.ivMove
-      : key === 'atr' ? h.components.atrMove
-      : key === 'rv' ? h.components.rvMove : 0;
-    parts.push(`  ${key.toUpperCase().padEnd(10)} ${(weight * 100).toFixed(0).padStart(3)}% × $${(rawMove ?? 0).toFixed(2).padStart(8)} = $${contribution.toFixed(2)}`);
+    const rawMove = blendKeyMove(h, key);
+    parts.push(`  ${blendKeyLabel(h, key).padEnd(10)} ${(weight * 100).toFixed(0).padStart(3)}% × $${rawMove.toFixed(2).padStart(8)} = $${contribution.toFixed(2)}`);
   }
   lines.push(...parts);
   lines.push(`  ${''.padEnd(10)} ${''.padStart(3)}   ${''.padStart(8)}   --------`);
@@ -94,7 +168,7 @@ function horizonSection(h: ForecastHorizon, result: ForecastResult): string {
   lines.push('');
   const confLabels: Record<string, string> = {
     volAgreement: 'ATR/RV Agreement',
-    ivAgreement: 'IV Agreement',
+    ivAgreement: 'Options Agreement',
     trendClarity: 'Trend Clarity',
   };
   lines.push('```');
@@ -119,7 +193,12 @@ function horizonSection(h: ForecastHorizon, result: ForecastResult): string {
   lines.push(`| 90% Range | $${h.range90.low.toFixed(2)} — $${h.range90.high.toFixed(2)} |`);
   lines.push(`| Skew | ${h.skew} |`);
   lines.push(`| Confidence | ${(h.confidence * 100).toFixed(0)}% (${h.confidenceLabel}) |`);
+  lines.push(`| Options Source | ${h.optionsSource ?? 'none'} |`);
   lines.push(`| IV Used | ${h.ivAvailable ? 'Yes' : 'No'}${h.ivUsed != null ? ` (${(h.ivUsed * 100).toFixed(2)}%)` : ''} |`);
+  lines.push(`| Straddle Move | ${h.components.straddleMove != null ? '$' + h.components.straddleMove.toFixed(2) : 'N/A'} |`);
+  lines.push(`| Structure Move | $${h.components.structureMove.toFixed(2)} |`);
+  lines.push(`| Support | ${h.structureData.support ? '$' + h.structureData.support.price.toFixed(2) : 'N/A'} |`);
+  lines.push(`| Resistance | ${h.structureData.resistance ? '$' + h.structureData.resistance.price.toFixed(2) : 'N/A'} |`);
   lines.push('');
 
   return lines.join('\n');
@@ -147,6 +226,7 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push(`| ATR(14) | $${result.indicators.atr14.toFixed(2)} |`);
   lines.push(`| RV(20d) daily sigma | ${(result.indicators.rv20Daily * 100).toFixed(4)}% |`);
   lines.push(`| IV Available | ${result.ivAvailable ? `Yes (${result.ivExpirations} expirations)` : 'No'} |`);
+  lines.push(`| Straddle Available | ${result.straddleAvailable ? `Yes (${result.straddleExpirations} expirations)` : 'No'} |`);
   if (result.indicators.ema20Slope != null)
     lines.push(`| EMA(20) Slope | ${sign(result.indicators.ema20Slope)}${result.indicators.ema20Slope.toFixed(4)} |`);
   if (result.indicators.ema50Slope != null)
@@ -156,6 +236,30 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   if (result.indicators.bollingerBandwidth != null)
     lines.push(`| Bollinger Bandwidth | ${result.indicators.bollingerBandwidth.toFixed(4)} |`);
   lines.push('');
+
+  // IV Term Structure
+  if (result.ivTermStructure && result.ivTermStructure.length > 0) {
+    lines.push('## IV Term Structure');
+    lines.push('');
+    lines.push('| Expiration | IV | Contracts |');
+    lines.push('|------------|----|-----------| ');
+    for (const e of result.ivTermStructure) {
+      lines.push(`| ${e.expirationDate} | ${(e.iv * 100).toFixed(1)}% | ${e.contractsUsed} |`);
+    }
+    lines.push('');
+  }
+
+  // Straddle Term Structure
+  if (result.straddleTermStructure && result.straddleTermStructure.length > 0) {
+    lines.push('## Straddle Term Structure');
+    lines.push('');
+    lines.push('| Expiration | ATM Strike | Call Mid | Put Mid | Straddle | Expected Move |');
+    lines.push('|------------|-----------|---------|---------|----------|---------------|');
+    for (const s of result.straddleTermStructure) {
+      lines.push(`| ${s.expirationDate} | $${s.strike.toFixed(0)} | $${s.callMid.toFixed(2)} | $${s.putMid.toFixed(2)} | $${s.straddle.toFixed(2)} | $${s.expectedMove.toFixed(2)} |`);
+    }
+    lines.push('');
+  }
 
   // Trend score breakdown
   lines.push('## Trend Score Breakdown');
@@ -200,10 +304,12 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('1. **ATR move**: Multiply ATR(14) by `sqrt(trading_days)`');
   lines.push('2. **RV move**: Multiply `spot × daily_sigma × sqrt(trading_days)`');
   lines.push('3. **IV move**: Multiply `spot × annualized_IV × sqrt(trading_days / 252)`');
-  lines.push('4. **Blended move**: Apply the weight formula shown for each horizon');
-  lines.push('5. **Trend drift**: `spot × 0.02 × trendScore × sqrt(trading_days / 5)`');
-  lines.push('6. **Center**: `spot + drift`');
-  lines.push('7. **Bands**: `center ± sigma_multiplier × blended_move`');
+  lines.push('4. **Straddle move**: `0.85 × (ATM_call_mid + ATM_put_mid)`, sqrt-scaled across expirations');
+  lines.push('5. **S/R structure move**: avg(distance to nearest support, distance to nearest resistance)');
+  lines.push('6. **Blended move**: Apply the weight formula shown for each horizon');
+  lines.push('7. **Trend drift**: `spot × 0.02 × trendScore × sqrt(trading_days / 5)`');
+  lines.push('8. **Center**: `spot + drift`');
+  lines.push('9. **Bands**: `center ± sigma_multiplier × blended_move`');
   lines.push('   - 50% band: σ = 0.67');
   lines.push('   - 68% band: σ = 1.00');
   lines.push('   - 90% band: σ = 1.80 (fat-tail adjusted from 1.64)');
@@ -294,7 +400,6 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   if (rsiRaw != null) {
     lines.push(`RSI Regime: raw = ${rsiRaw.toFixed(2)}`);
     lines.push(`  breakpoints: [20→-1, 30→-0.5, 50→0, 70→+0.5, 80→+1]`);
-    // Determine segment
     if (rsiRaw <= 20) {
       lines.push(`  clamped at -1 (RSI <= 20)`);
     } else if (rsiRaw >= 80) {
@@ -323,25 +428,23 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('The confidence score measures agreement between volatility estimators and trend decisiveness.');
   lines.push('');
   lines.push('```');
-  lines.push('ATR/RV Agreement = 1 - |atrMove - rvMove| / max(atrMove, rvMove)');
-  lines.push('                 → measures how closely ATR and RV volatility estimates agree');
-  lines.push('                 → range [0, 1] where 1 = perfect agreement');
+  lines.push('ATR/RV Agreement  = 1 - |atrMove - rvMove| / max(atrMove, rvMove)');
+  lines.push('                  → range [0, 1] where 1 = perfect agreement');
   lines.push('');
-  lines.push('IV Agreement     = 1 - |ivMove - avgMove| / max(ivMove, avgMove)');
-  lines.push('                   where avgMove = (atrMove + rvMove) / 2');
-  lines.push('                 → measures how IV aligns with statistical vol estimates');
-  lines.push('                 → range [0, 1] where 1 = IV confirms historical vol');
+  lines.push('Options Agreement = 1 - |optionsMove - avgMove| / max(optionsMove, avgMove)');
+  lines.push('                    where avgMove = (atrMove + rvMove) / 2');
+  lines.push('                    optionsMove = straddle move (preferred) or IV move (fallback)');
+  lines.push('                  → range [0, 1] where 1 = options confirm historical vol');
   lines.push('');
-  lines.push('Trend Clarity    = |trendScore|');
-  lines.push('                 → measures how decisive the current trend signal is');
-  lines.push('                 → range [0, 1] where 1 = maximum directional conviction');
+  lines.push('Trend Clarity     = |trendScore|');
+  lines.push('                  → range [0, 1] where 1 = maximum directional conviction');
   lines.push('```');
   lines.push('');
-  if (result.ivAvailable) {
-    lines.push('**With IV (3-component weighted average):**');
-    lines.push('`confidence = 0.35 × ATR/RV_Agreement + 0.30 × IV_Agreement + 0.35 × Trend_Clarity`');
+  if (result.ivAvailable || result.straddleAvailable) {
+    lines.push('**With options data (3-component weighted average):**');
+    lines.push('`confidence = 0.35 × ATR/RV_Agreement + 0.30 × Options_Agreement + 0.35 × Trend_Clarity`');
   } else {
-    lines.push('**Without IV (2-component fallback):**');
+    lines.push('**Without options data (2-component fallback):**');
     lines.push('`confidence = 0.50 × ATR/RV_Agreement + 0.50 × Trend_Clarity`');
   }
   lines.push('');
@@ -352,38 +455,39 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   for (const h of result.horizons) {
     const atrMove = h.components.atrMove;
     const rvMove = h.components.rvMove;
-    const ivMove = h.components.ivMove;
+    const optMove = h.optionsSource === 'straddle' ? h.components.straddleMove : h.components.ivMove;
     const maxVol = Math.max(atrMove, rvMove);
     const volAgree = maxVol > 0 ? 1 - Math.abs(atrMove - rvMove) / maxVol : 0.5;
     const label = h.targetDate ? `${fmtDate(h.targetDate)} (${h.horizonDays}d)` : h.horizon;
     lines.push(`**${label}**`);
     lines.push('```');
-    lines.push(`ATR/RV Agreement = 1 - |${atrMove.toFixed(2)} - ${rvMove.toFixed(2)}| / max(${atrMove.toFixed(2)}, ${rvMove.toFixed(2)})`);
-    lines.push(`                 = 1 - ${Math.abs(atrMove - rvMove).toFixed(2)} / ${maxVol.toFixed(2)}`);
-    lines.push(`                 = ${(volAgree * 100).toFixed(1)}%`);
-    if (ivMove != null) {
+    lines.push(`ATR/RV Agreement  = 1 - |${atrMove.toFixed(2)} - ${rvMove.toFixed(2)}| / max(${atrMove.toFixed(2)}, ${rvMove.toFixed(2)})`);
+    lines.push(`                  = 1 - ${Math.abs(atrMove - rvMove).toFixed(2)} / ${maxVol.toFixed(2)}`);
+    lines.push(`                  = ${(volAgree * 100).toFixed(1)}%`);
+    if (optMove != null) {
       const avgMove = (atrMove + rvMove) / 2;
-      const maxVal = Math.max(ivMove, avgMove);
-      const ivAgree = maxVal > 0 ? 1 - Math.abs(ivMove - avgMove) / maxVal : 0.5;
+      const maxVal = Math.max(optMove, avgMove);
+      const ivAgree = maxVal > 0 ? 1 - Math.abs(optMove - avgMove) / maxVal : 0.5;
       lines.push('');
-      lines.push(`IV Agreement     = 1 - |${ivMove.toFixed(2)} - ${avgMove.toFixed(2)}| / max(${ivMove.toFixed(2)}, ${avgMove.toFixed(2)})`);
-      lines.push(`                 = 1 - ${Math.abs(ivMove - avgMove).toFixed(2)} / ${maxVal.toFixed(2)}`);
-      lines.push(`                 = ${(ivAgree * 100).toFixed(1)}%`);
+      lines.push(`Options Agreement = 1 - |${optMove.toFixed(2)} - ${avgMove.toFixed(2)}| / max(${optMove.toFixed(2)}, ${avgMove.toFixed(2)})`);
+      lines.push(`                  = 1 - ${Math.abs(optMove - avgMove).toFixed(2)} / ${maxVal.toFixed(2)}`);
+      lines.push(`                  = ${(ivAgree * 100).toFixed(1)}%`);
+      lines.push(`                  (source: ${h.optionsSource})`);
     }
     lines.push('');
-    lines.push(`Trend Clarity    = |${sign(result.trendScore)}${result.trendScore.toFixed(4)}| = ${Math.abs(result.trendScore).toFixed(4)} = ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+    lines.push(`Trend Clarity     = |${sign(result.trendScore)}${result.trendScore.toFixed(4)}| = ${Math.abs(result.trendScore).toFixed(4)} = ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
     lines.push('');
-    if (ivMove != null) {
+    if (optMove != null) {
       const avgMove = (atrMove + rvMove) / 2;
-      const maxVal = Math.max(ivMove, avgMove);
-      const ivAgree = maxVal > 0 ? 1 - Math.abs(ivMove - avgMove) / maxVal : 0.5;
-      lines.push(`Confidence       = 0.35 × ${(volAgree * 100).toFixed(1)}% + 0.30 × ${(ivAgree * 100).toFixed(1)}% + 0.35 × ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
-      lines.push(`                 = ${(0.35 * volAgree * 100).toFixed(1)}% + ${(0.30 * ivAgree * 100).toFixed(1)}% + ${(0.35 * Math.abs(result.trendScore) * 100).toFixed(1)}%`);
-      lines.push(`                 = ${(h.confidence * 100).toFixed(1)}% (${h.confidenceLabel})`);
+      const maxVal = Math.max(optMove, avgMove);
+      const ivAgree = maxVal > 0 ? 1 - Math.abs(optMove - avgMove) / maxVal : 0.5;
+      lines.push(`Confidence        = 0.35 × ${(volAgree * 100).toFixed(1)}% + 0.30 × ${(ivAgree * 100).toFixed(1)}% + 0.35 × ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+      lines.push(`                  = ${(0.35 * volAgree * 100).toFixed(1)}% + ${(0.30 * ivAgree * 100).toFixed(1)}% + ${(0.35 * Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+      lines.push(`                  = ${(h.confidence * 100).toFixed(1)}% (${h.confidenceLabel})`);
     } else {
-      lines.push(`Confidence       = 0.50 × ${(volAgree * 100).toFixed(1)}% + 0.50 × ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
-      lines.push(`                 = ${(0.50 * volAgree * 100).toFixed(1)}% + ${(0.50 * Math.abs(result.trendScore) * 100).toFixed(1)}%`);
-      lines.push(`                 = ${(h.confidence * 100).toFixed(1)}% (${h.confidenceLabel})`);
+      lines.push(`Confidence        = 0.50 × ${(volAgree * 100).toFixed(1)}% + 0.50 × ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+      lines.push(`                  = ${(0.50 * volAgree * 100).toFixed(1)}% + ${(0.50 * Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+      lines.push(`                  = ${(h.confidence * 100).toFixed(1)}% (${h.confidenceLabel})`);
     }
     lines.push('```');
     lines.push('');
@@ -400,28 +504,70 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('| < 45% | low |');
   lines.push('');
 
-  // 4. S/R term status
-  lines.push('### 4. Support/Resistance (S/R) Term');
+  // 4. S/R Structure Formula
+  lines.push('### 4. Support/Resistance (S/R) Structure');
   lines.push('');
-  lines.push('The blending formula allocates a weight to a structure term (S/R), but the S/R');
-  lines.push('calculation is **not yet implemented**. The S/R contribution is currently hardcoded to `0`');
-  lines.push('across all horizons. The allocated weight is effectively redistributed to IV/ATR/RV');
-  lines.push('only in the sense that S/R × 0 = 0; the other weights are unchanged.');
+  lines.push('S/R levels are detected from daily OHLCV bars using swing highs/lows (local extrema)');
+  lines.push('and recent N-bar highs and lows as broader price anchors.');
   lines.push('');
   lines.push('```');
-  lines.push('Blending weights (with IV):');
-  lines.push('  1W: 55% IV + 25% ATR + 15% RV +  5% S/R(=0)');
-  lines.push('  2W: 50% IV + 25% ATR + 15% RV + 10% S/R(=0)');
-  lines.push('  3W: 45% IV + 25% ATR + 15% RV + 15% S/R(=0)');
-  lines.push('  4W: 40% IV + 25% ATR + 15% RV + 20% S/R(=0)');
+  lines.push('Swing detection:');
+  lines.push('  swing_high: bar where high > max(high of 3 bars before AND 3 bars after)');
+  lines.push('  swing_low:  bar where low  < min(low  of 3 bars before AND 3 bars after)');
   lines.push('');
-  lines.push('Blending weights (without IV fallback):');
-  lines.push('  All: 55% ATR + 45% RV');
+  lines.push('Lookback windows (scales with horizon):');
+  lines.push('  1W: 20 bars    2W: 30 bars    3W: 45 bars    4W: 60 bars');
+  lines.push('');
+  lines.push('Structure move = avg(dist_to_nearest_support, dist_to_nearest_resistance)');
+  lines.push('  → This represents the average expected range implied by price structure');
+  lines.push('  → Naturally constrains the blend when S/R is closer than vol-implied range');
   lines.push('```');
   lines.push('');
 
-  // 5. Skew label rules
-  lines.push('### 5. Skew Label Rules');
+  // 5. Straddle Expected Move Formula
+  lines.push('### 5. Straddle Expected Move');
+  lines.push('');
+  lines.push('When available, the straddle expected move replaces the IV×sqrt(t/252) formula');
+  lines.push('as the primary options-derived component, because it directly embeds:');
+  lines.push('volatility skew, jump risk, event risk, and supply/demand.');
+  lines.push('');
+  lines.push('```');
+  lines.push('straddle = ATM_call_midpoint + ATM_put_midpoint');
+  lines.push('expectedMove = 0.85 × straddle');
+  lines.push('');
+  lines.push('ATM strike = strike closest to spot that has both call and put');
+  lines.push('');
+  lines.push('Cross-expiration handling:');
+  lines.push('  exact match:    use straddle directly');
+  lines.push('  interpolation:  linear between bracketing expirations');
+  lines.push('  extrapolation:  sqrt-time scaling from nearest expiration');
+  lines.push('');
+  lines.push('Fallback chain:');
+  lines.push('  1. straddle available → use straddle expected move');
+  lines.push('  2. only IV available  → use IV × sqrt(t/252)');
+  lines.push('  3. no options data    → ATR + RV fallback (55%/45%)');
+  lines.push('```');
+  lines.push('');
+
+  // 6. IV Term Structure Interpolation
+  lines.push('### 6. IV Term Structure Interpolation');
+  lines.push('');
+  lines.push('When multiple option expirations are available, IV is interpolated to match');
+  lines.push('each forecast horizon exactly, rather than using a single flat IV.');
+  lines.push('');
+  lines.push('```');
+  lines.push('target_date = today + horizonDays × 1.4 (trading→calendar conversion)');
+  lines.push('');
+  lines.push('Find bracketing expirations: before_exp ≤ target_date ≤ after_exp');
+  lines.push('t = (target_date - before_exp) / (after_exp - before_exp)');
+  lines.push('interpolated_IV = before_IV + t × (after_IV - before_IV)');
+  lines.push('');
+  lines.push('If only one side available: use nearest expiration IV directly');
+  lines.push('```');
+  lines.push('');
+
+  // 7. Skew label rules
+  lines.push('### 7. Skew Label Rules');
   lines.push('');
   lines.push('```');
   lines.push('skewPct = |drift / spot| × 100');
@@ -434,8 +580,8 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('```');
   lines.push('');
 
-  // 6. Constants
-  lines.push('### 6. Model Constants');
+  // 8. Constants
+  lines.push('### 8. Model Constants');
   lines.push('');
   lines.push('| Constant | Value | Purpose |');
   lines.push('|----------|-------|---------|');
@@ -443,6 +589,7 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('| SIGMA_50 | 0.67 | 50% confidence band multiplier |');
   lines.push('| SIGMA_68 | 1.00 | 68% confidence band multiplier |');
   lines.push('| SIGMA_90 | 1.80 | 90% confidence band multiplier (fat-tail adj from 1.64) |');
+  lines.push('| STRADDLE_FACTOR | 0.85 | Straddle to expected move conversion |');
   lines.push('| Trading days/week | 5 | Used in sqrt scaling |');
   lines.push('| Annualization factor | 252 | Trading days per year (for IV) |');
   lines.push('');

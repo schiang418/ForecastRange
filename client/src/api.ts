@@ -9,6 +9,59 @@ export interface TrendComponent {
   weight: number;
 }
 
+export interface SRLevel {
+  price: number;
+  type: string;
+  date: string | null;
+  side?: string;
+}
+
+export interface StraddleInfo {
+  source: string;
+  expiration: string;
+  move: number;
+  callMid: number | null;
+  putMid: number | null;
+  straddle: number | null;
+  strike: number | null;
+  scaleFactor: number | null;
+  t: number | null;
+}
+
+export interface IVTermStructureEntry {
+  expirationDate: string;
+  iv: number;
+  contractsUsed: number;
+}
+
+export interface StraddleTermStructureEntry {
+  expirationDate: string;
+  strike: number;
+  callMid: number;
+  putMid: number;
+  straddle: number;
+  expectedMove: number;
+}
+
+export interface StructureData {
+  support: SRLevel | null;
+  resistance: SRLevel | null;
+  distToSupport: number | null;
+  distToResistance: number | null;
+  structureMove: number;
+  lookbackDays: number;
+  levels: SRLevel[];
+}
+
+export interface IVTermStructureInfo {
+  interpolated: boolean;
+  beforeExp: string | null;
+  afterExp: string | null;
+  beforeIV: number | null;
+  afterIV: number | null;
+  t: number;
+}
+
 export interface ForecastHorizon {
   horizon: string;
   horizonWeeks: number;
@@ -26,10 +79,13 @@ export interface ForecastHorizon {
   confidenceLabel: string;
   ivAvailable: boolean;
   ivUsed: number | null;
+  optionsSource: string | null;
   components: {
     atrMove: number;
     rvMove: number;
     ivMove: number | null;
+    straddleMove: number | null;
+    structureMove: number;
   };
   blending: {
     weights: Record<string, number>;
@@ -47,6 +103,9 @@ export interface ForecastHorizon {
     moveUsed: number;
     centerUsed: number;
   };
+  straddleInfo: StraddleInfo | null;
+  ivTermStructure: IVTermStructureInfo | null;
+  structureData: StructureData;
 }
 
 export interface TrendBreakdown {
@@ -63,6 +122,8 @@ export interface ForecastResult {
   dataPoints: number;
   ivAvailable: boolean;
   ivExpirations: number;
+  straddleAvailable: boolean;
+  straddleExpirations: number;
   trendScore: number;
   trendBreakdown: TrendBreakdown;
   indicators: {
@@ -76,6 +137,8 @@ export interface ForecastResult {
     macdHistogram: number | null;
     bollingerBandwidth: number | null;
   };
+  ivTermStructure: IVTermStructureEntry[] | null;
+  straddleTermStructure: StraddleTermStructureEntry[] | null;
   horizons: ForecastHorizon[];
   error?: string;
 }

@@ -5,11 +5,15 @@
  * Computes IV-based, ATR-based, and RV-based forecast components.
  * Blends components with automatic fallback when IV is unavailable.
  * Returns structured forecast result for 1-4 week horizons.
+ *
+ * v2: Added ATM straddle expected move, IV term structure interpolation,
+ *     and support/resistance structure term.
  */
 
 const { computeForecastIndicators } = require('./indicators');
-const { extractAtmIV } = require('./polygon');
+const { extractAtmIV, extractAtmStraddle } = require('./polygon');
 const { gradientScore } = require('./scoring');
+const { computeSupportResistance, SR_LOOKBACK } = require('./structure');
 
 /**
  * Compute Friday-aligned horizons.
@@ -53,8 +57,8 @@ function computeFridayHorizons(today) {
   return results;
 }
 
-// Blending weights by horizon (weeks) when IV is available
-// [iv_weight, atr_weight, rv_weight, structure_weight]
+// Blending weights by horizon (weeks) when IV/straddle is available
+// [options_weight, atr_weight, rv_weight, structure_weight]
 const BLEND_WEIGHTS_WITH_IV = {
   1: [0.55, 0.25, 0.15, 0.05],
   2: [0.50, 0.25, 0.15, 0.10],
@@ -124,6 +128,8 @@ function computeTrendScore(indicators) {
  * horizonDays: trading days (5, 10, 15, 20 for 1-4 weeks)
  * expirationIVs: array of { expirationDate, iv } sorted by date
  * today: Date object for current date
+ *
+ * Returns { iv, interpolated, beforeExp, afterExp, t } for auditability.
  */
 function getIVForHorizon(expirationIVs, horizonDays, today) {
   if (!expirationIVs || expirationIVs.length === 0) return null;
@@ -148,10 +154,10 @@ function getIVForHorizon(expirationIVs, horizonDays, today) {
 
   // If exact match or only one side available
   if (before && after && before.expirationDate === after.expirationDate) {
-    return before.iv;
+    return { iv: before.iv, interpolated: false, beforeExp: before.expirationDate, afterExp: before.expirationDate, t: 0 };
   }
-  if (!before) return after ? after.iv : null;
-  if (!after) return before.iv;
+  if (!before) return after ? { iv: after.iv, interpolated: false, beforeExp: null, afterExp: after.expirationDate, t: 0 } : null;
+  if (!after) return { iv: before.iv, interpolated: false, beforeExp: before.expirationDate, afterExp: null, t: 0 };
 
   // Linear interpolation between the two bracketing expirations
   const beforeDate = new Date(before.expirationDate);
@@ -159,9 +165,92 @@ function getIVForHorizon(expirationIVs, horizonDays, today) {
   const totalDays = (afterDate - beforeDate) / (1000 * 60 * 60 * 24);
   const elapsedDays = (targetDate - beforeDate) / (1000 * 60 * 60 * 24);
 
-  if (totalDays <= 0) return before.iv;
+  if (totalDays <= 0) return { iv: before.iv, interpolated: false, beforeExp: before.expirationDate, afterExp: after.expirationDate, t: 0 };
   const t = Math.max(0, Math.min(1, elapsedDays / totalDays));
-  return before.iv + t * (after.iv - before.iv);
+  const iv = before.iv + t * (after.iv - before.iv);
+  return {
+    iv,
+    interpolated: true,
+    beforeExp: before.expirationDate,
+    afterExp: after.expirationDate,
+    beforeIV: before.iv,
+    afterIV: after.iv,
+    t: round4(t),
+  };
+}
+
+/**
+ * Get the interpolated straddle expected move for a specific horizon.
+ * Similar to getIVForHorizon but works with straddle data.
+ *
+ * Since straddle prices are for specific expiration dates, we need to
+ * sqrt-scale between expirations when interpolating.
+ */
+function getStraddleMoveForHorizon(straddleData, horizonDays, today) {
+  if (!straddleData || straddleData.length === 0) return null;
+
+  // Target calendar date
+  const targetDate = new Date(today);
+  targetDate.setDate(targetDate.getDate() + Math.round(horizonDays * 1.4));
+  const targetStr = targetDate.toISOString().slice(0, 10);
+
+  // Find bracketing expirations
+  let before = null;
+  let after = null;
+
+  for (const item of straddleData) {
+    if (item.expirationDate <= targetStr) before = item;
+    if (item.expirationDate >= targetStr && !after) after = item;
+  }
+
+  // Exact match
+  if (before && after && before.expirationDate === after.expirationDate) {
+    return { move: before.expectedMove, source: 'straddle_exact', expiration: before.expirationDate, straddle: before };
+  }
+
+  // Only one side available: scale the straddle move by sqrt ratio of time
+  if (!before && after) {
+    const afterDays = calendarDaysBetween(today, new Date(after.expirationDate));
+    const targetDays = calendarDaysBetween(today, targetDate);
+    if (afterDays > 0) {
+      const scaled = after.expectedMove * Math.sqrt(targetDays / afterDays);
+      return { move: round2(scaled), source: 'straddle_scaled', expiration: after.expirationDate, straddle: after, scaleFactor: round4(Math.sqrt(targetDays / afterDays)) };
+    }
+    return { move: after.expectedMove, source: 'straddle_nearest', expiration: after.expirationDate, straddle: after };
+  }
+  if (!after && before) {
+    const beforeDays = calendarDaysBetween(today, new Date(before.expirationDate));
+    const targetDays = calendarDaysBetween(today, targetDate);
+    if (beforeDays > 0) {
+      const scaled = before.expectedMove * Math.sqrt(targetDays / beforeDays);
+      return { move: round2(scaled), source: 'straddle_scaled', expiration: before.expirationDate, straddle: before, scaleFactor: round4(Math.sqrt(targetDays / beforeDays)) };
+    }
+    return { move: before.expectedMove, source: 'straddle_nearest', expiration: before.expirationDate, straddle: before };
+  }
+
+  // Interpolate between bracketing expirations using sqrt-time scaling
+  const beforeDays = calendarDaysBetween(today, new Date(before.expirationDate));
+  const afterDays = calendarDaysBetween(today, new Date(after.expirationDate));
+  const targetDays = calendarDaysBetween(today, targetDate);
+  const totalRange = afterDays - beforeDays;
+
+  if (totalRange <= 0) return { move: before.expectedMove, source: 'straddle_exact', expiration: before.expirationDate, straddle: before };
+
+  const t = (targetDays - beforeDays) / totalRange;
+  const interpolatedMove = before.expectedMove + t * (after.expectedMove - before.expectedMove);
+
+  return {
+    move: round2(interpolatedMove),
+    source: 'straddle_interpolated',
+    beforeExp: before.expirationDate,
+    afterExp: after.expirationDate,
+    t: round4(t),
+    straddle: before,
+  };
+}
+
+function calendarDaysBetween(d1, d2) {
+  return Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
 }
 
 /**
@@ -246,9 +335,13 @@ function computeForecast(bars, optionsChain = null, options = {}) {
     return { error: 'Could not compute ATR or realized volatility' };
   }
 
-  // Extract IV from options chain
+  // Extract IV from options chain (for term structure)
   const expirationIVs = optionsChain ? extractAtmIV(optionsChain, spot) : null;
   const ivAvailable = expirationIVs != null && expirationIVs.length > 0;
+
+  // Extract ATM straddle expected move from options chain
+  const straddleData = optionsChain ? extractAtmStraddle(optionsChain, spot) : null;
+  const straddleAvailable = straddleData != null && straddleData.length > 0;
 
   // Compute trend score
   const trendResult = computeTrendScore(indicators);
@@ -269,29 +362,66 @@ function computeForecast(bars, optionsChain = null, options = {}) {
     // RV-based move: rv20 is daily sigma, scale by sqrt(h) then multiply by spot
     const rvMove = spot * rv20 * Math.sqrt(h);
 
-    // IV-based move (if available)
+    // IV-based move (with term structure interpolation)
     let ivMove = null;
     let horizonIV = null;
+    let ivTermStructure = null;
     if (ivAvailable) {
-      horizonIV = getIVForHorizon(expirationIVs, h, today);
-      if (horizonIV != null) {
+      const ivResult = getIVForHorizon(expirationIVs, h, today);
+      if (ivResult != null) {
+        horizonIV = ivResult.iv;
         ivMove = spot * horizonIV * Math.sqrt(h / 252);
+        ivTermStructure = {
+          interpolated: ivResult.interpolated,
+          beforeExp: ivResult.beforeExp,
+          afterExp: ivResult.afterExp,
+          beforeIV: ivResult.beforeIV != null ? round4(ivResult.beforeIV) : null,
+          afterIV: ivResult.afterIV != null ? round4(ivResult.afterIV) : null,
+          t: ivResult.t,
+        };
       }
     }
+
+    // Straddle expected move (market-implied, replaces IV when available)
+    let straddleMove = null;
+    let straddleInfo = null;
+    if (straddleAvailable) {
+      const straddleResult = getStraddleMoveForHorizon(straddleData, h, today);
+      if (straddleResult != null) {
+        straddleMove = straddleResult.move;
+        straddleInfo = {
+          source: straddleResult.source,
+          expiration: straddleResult.expiration || straddleResult.beforeExp,
+          move: straddleResult.move,
+          straddle: straddleResult.straddle,
+          scaleFactor: straddleResult.scaleFactor || null,
+          t: straddleResult.t || null,
+        };
+      }
+    }
+
+    // The primary options-derived move: prefer straddle over IV
+    const optionsMove = straddleMove != null ? straddleMove : ivMove;
+    const optionsSource = straddleMove != null ? 'straddle' : (ivMove != null ? 'iv' : null);
+
+    // S/R structure term
+    const lookback = SR_LOOKBACK[weeks] || 60;
+    const srResult = computeSupportResistance(bars, spot, lookback);
+    const structureMove = srResult.structureMove;
 
     // Blended move with detailed weight breakdown
     let blendedMove;
     let blendWeights;
     let blendContributions;
-    if (ivMove != null) {
-      const [wIV, wATR, wRV, wStruct] = BLEND_WEIGHTS_WITH_IV[weeks] || BLEND_WEIGHTS_WITH_IV[4];
-      blendedMove = wIV * ivMove + wATR * atrMove + wRV * rvMove + wStruct * 0;
-      blendWeights = { iv: wIV, atr: wATR, rv: wRV, structure: wStruct };
+    if (optionsMove != null) {
+      const [wOpt, wATR, wRV, wStruct] = BLEND_WEIGHTS_WITH_IV[weeks] || BLEND_WEIGHTS_WITH_IV[4];
+      blendedMove = wOpt * optionsMove + wATR * atrMove + wRV * rvMove + wStruct * structureMove;
+      blendWeights = { options: wOpt, atr: wATR, rv: wRV, structure: wStruct };
       blendContributions = {
-        iv: round2(wIV * ivMove),
+        options: round2(wOpt * optionsMove),
         atr: round2(wATR * atrMove),
         rv: round2(wRV * rvMove),
-        structure: 0,
+        structure: round2(wStruct * structureMove),
       };
     } else {
       blendedMove = BLEND_WEIGHTS_FALLBACK.atr * atrMove + BLEND_WEIGHTS_FALLBACK.rv * rvMove;
@@ -311,8 +441,8 @@ function computeForecast(bars, optionsChain = null, options = {}) {
     const range68 = { low: center - SIGMA_68 * blendedMove, high: center + SIGMA_68 * blendedMove };
     const range90 = { low: center - SIGMA_90 * blendedMove, high: center + SIGMA_90 * blendedMove };
 
-    // Confidence with sub-components
-    const confidenceResult = computeConfidence(atrMove, rvMove, ivMove, trendScore);
+    // Confidence with sub-components (use optionsMove for IV agreement check)
+    const confidenceResult = computeConfidence(atrMove, rvMove, optionsMove, trendScore);
 
     // Expected move as percentage
     const expectedMovePct = (blendedMove / spot) * 100;
@@ -332,18 +462,21 @@ function computeForecast(bars, optionsChain = null, options = {}) {
       trendDrift: round2(trendDrift),
       confidence: round2(confidenceResult.score),
       confidenceLabel: confidenceLabel(confidenceResult.score),
-      ivAvailable: ivMove != null,
+      ivAvailable: optionsMove != null,
       ivUsed: horizonIV != null ? round4(horizonIV) : null,
+      optionsSource,
       components: {
         atrMove: round2(atrMove),
         rvMove: round2(rvMove),
         ivMove: ivMove != null ? round2(ivMove) : null,
+        straddleMove: straddleMove != null ? round2(straddleMove) : null,
+        structureMove: round2(structureMove),
       },
       blending: {
         weights: blendWeights,
         contributions: blendContributions,
-        formula: ivMove != null
-          ? `${blendWeights.iv}*IV + ${blendWeights.atr}*ATR + ${blendWeights.rv}*RV + ${blendWeights.structure}*S/R`
+        formula: optionsMove != null
+          ? `${blendWeights.options}*${optionsSource === 'straddle' ? 'STRADDLE' : 'IV'} + ${blendWeights.atr}*ATR + ${blendWeights.rv}*RV + ${blendWeights.structure}*S/R`
           : `${blendWeights.atr}*ATR + ${blendWeights.rv}*RV`,
       },
       confidenceBreakdown: confidenceResult.components,
@@ -357,6 +490,27 @@ function computeForecast(bars, optionsChain = null, options = {}) {
         moveUsed: round2(blendedMove),
         centerUsed: round2(center),
       },
+      straddleInfo: straddleInfo ? {
+        source: straddleInfo.source,
+        expiration: straddleInfo.expiration,
+        move: straddleInfo.move,
+        callMid: straddleInfo.straddle?.callMid,
+        putMid: straddleInfo.straddle?.putMid,
+        straddle: straddleInfo.straddle?.straddle,
+        strike: straddleInfo.straddle?.strike,
+        scaleFactor: straddleInfo.scaleFactor,
+        t: straddleInfo.t,
+      } : null,
+      ivTermStructure: ivTermStructure,
+      structureData: {
+        support: srResult.support,
+        resistance: srResult.resistance,
+        distToSupport: srResult.distToSupport,
+        distToResistance: srResult.distToResistance,
+        structureMove: srResult.structureMove,
+        lookbackDays: lookback,
+        levels: srResult.levels,
+      },
     };
   });
 
@@ -367,6 +521,8 @@ function computeForecast(bars, optionsChain = null, options = {}) {
     dataPoints: bars.length,
     ivAvailable,
     ivExpirations: expirationIVs ? expirationIVs.length : 0,
+    straddleAvailable,
+    straddleExpirations: straddleData ? straddleData.length : 0,
     trendScore: round4(trendScore),
     trendBreakdown: trendResult.components,
     indicators: {
@@ -380,6 +536,19 @@ function computeForecast(bars, optionsChain = null, options = {}) {
       macdHistogram: indicators.macd ? round4(indicators.macd.histogram) : null,
       bollingerBandwidth: indicators.bollingerBands ? round4(indicators.bollingerBands.bandwidth) : null,
     },
+    ivTermStructure: expirationIVs ? expirationIVs.map(e => ({
+      expirationDate: e.expirationDate,
+      iv: round4(e.iv),
+      contractsUsed: e.contractsUsed,
+    })) : null,
+    straddleTermStructure: straddleData ? straddleData.map(s => ({
+      expirationDate: s.expirationDate,
+      strike: s.strike,
+      callMid: s.callMid,
+      putMid: s.putMid,
+      straddle: s.straddle,
+      expectedMove: s.expectedMove,
+    })) : null,
     horizons: forecastHorizons,
   };
 }

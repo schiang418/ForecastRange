@@ -128,4 +128,79 @@ function extractAtmIV(optionsChain, spotPrice) {
   return expirationIVs;
 }
 
-module.exports = { fetchDailyBars, fetchOptionsChain, extractAtmIV, sleep };
+/**
+ * Extract ATM straddle expected move from options chain snapshot.
+ * For each expiration, finds the ATM call and put and computes:
+ *   straddle = call_mid + put_mid
+ *   expectedMove = 0.85 × straddle (industry standard factor)
+ *
+ * Returns array of { expirationDate, strike, callMid, putMid, straddle, expectedMove }
+ * sorted by expiration date, or null if insufficient data.
+ */
+function extractAtmStraddle(optionsChain, spotPrice) {
+  if (!optionsChain || optionsChain.length === 0) return null;
+
+  // Filter to contracts with valid quote data
+  const validContracts = optionsChain.filter(c =>
+    c.details?.strike_price != null &&
+    c.details?.contract_type != null &&
+    c.details?.expiration_date != null &&
+    c.last_quote?.midpoint > 0
+  );
+
+  if (validContracts.length < 4) return null;
+
+  // Group by expiration
+  const byExpiration = {};
+  for (const c of validContracts) {
+    const exp = c.details.expiration_date;
+    if (!byExpiration[exp]) byExpiration[exp] = { calls: [], puts: [] };
+    if (c.details.contract_type === 'call') {
+      byExpiration[exp].calls.push(c);
+    } else if (c.details.contract_type === 'put') {
+      byExpiration[exp].puts.push(c);
+    }
+  }
+
+  const results = [];
+  for (const [exp, { calls, puts }] of Object.entries(byExpiration)) {
+    if (calls.length === 0 || puts.length === 0) continue;
+
+    // Find the ATM strike: the strike closest to spot that has BOTH a call and a put
+    const callStrikes = new Set(calls.map(c => c.details.strike_price));
+    const putStrikes = new Set(puts.map(c => c.details.strike_price));
+    const commonStrikes = [...callStrikes].filter(s => putStrikes.has(s));
+
+    if (commonStrikes.length === 0) continue;
+
+    // Find the closest common strike to spot
+    commonStrikes.sort((a, b) => Math.abs(a - spotPrice) - Math.abs(b - spotPrice));
+    const atmStrike = commonStrikes[0];
+
+    const atmCall = calls.find(c => c.details.strike_price === atmStrike);
+    const atmPut = puts.find(c => c.details.strike_price === atmStrike);
+
+    if (!atmCall || !atmPut) continue;
+
+    const callMid = atmCall.last_quote.midpoint;
+    const putMid = atmPut.last_quote.midpoint;
+    const straddle = callMid + putMid;
+    const expectedMove = 0.85 * straddle;
+
+    results.push({
+      expirationDate: exp,
+      strike: atmStrike,
+      callMid: Math.round(callMid * 100) / 100,
+      putMid: Math.round(putMid * 100) / 100,
+      straddle: Math.round(straddle * 100) / 100,
+      expectedMove: Math.round(expectedMove * 100) / 100,
+    });
+  }
+
+  if (results.length === 0) return null;
+
+  results.sort((a, b) => a.expirationDate.localeCompare(b.expirationDate));
+  return results;
+}
+
+module.exports = { fetchDailyBars, fetchOptionsChain, extractAtmIV, extractAtmStraddle, sleep };
