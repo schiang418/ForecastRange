@@ -127,6 +127,15 @@ export interface VolatilityMetrics {
   ivPercentileSource: 'iv_history' | 'rv_approximation';
   ivHistoryDays: number;
   ivHistoryRange: { min: number; max: number; median: number } | null;
+  ivDebug: {
+    totalRows: number;
+    currentIV: number | null;
+    belowCount: number;
+    distribution: { p10: number; p25: number; p50: number; p75: number; p90: number };
+    recentEntries: { date: string; iv: number }[];
+    ivPercentileCalc: string;
+    ivRankCalc: string;
+  } | null;
   rvPercentile: number | null;
   rvRank: number | null;
   regime: string;

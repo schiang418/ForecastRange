@@ -268,6 +268,21 @@ export default function ForecastSection() {
                   {result.ivDbError && (
                     <div className="text-red-400/80">DB error: {result.ivDbError}</div>
                   )}
+                  {vm.ivDebug && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-blue-400/70 hover:text-blue-400">IV Debug Diagnostics</summary>
+                      <div className="mt-1 font-mono text-[10px] leading-tight bg-black/30 rounded p-2 space-y-0.5">
+                        <div>Rows: {vm.ivDebug.totalRows} | Current IV: {vm.ivDebug.currentIV != null ? (vm.ivDebug.currentIV * 100).toFixed(1) + '%' : 'N/A'}</div>
+                        <div>Below count: {vm.ivDebug.belowCount}/{vm.ivDebug.totalRows} = {vm.ivDebug.ivPercentileCalc}</div>
+                        <div>IV Rank: {vm.ivDebug.ivRankCalc}</div>
+                        <div>Distribution: P10={vm.ivDebug.distribution.p10}% P25={vm.ivDebug.distribution.p25}% P50={vm.ivDebug.distribution.p50}% P75={vm.ivDebug.distribution.p75}% P90={vm.ivDebug.distribution.p90}%</div>
+                        <div className="mt-0.5">Recent IV history:</div>
+                        {vm.ivDebug.recentEntries.map((e, i) => (
+                          <div key={i} className="pl-2">{e.date}: {e.iv.toFixed(1)}%</div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               </div>
             );
