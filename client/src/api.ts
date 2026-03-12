@@ -249,6 +249,22 @@ export async function fetchNarrative(comparison: CompareResult['comparison']): P
   return data.narrative;
 }
 
+export async function fetchSpreadAnalysis(forecast: ForecastResult): Promise<string> {
+  const res = await fetch('/api/forecast/spreads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ forecast }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to generate spread analysis (${res.status})`);
+  }
+
+  const data = await res.json();
+  return data.analysis;
+}
+
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
   const res = await fetch('/api/forecast', {
     method: 'POST',

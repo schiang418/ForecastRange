@@ -4,6 +4,7 @@ const path = require('path');
 
 const forecastRouter = require('./routes/forecast');
 const compareRouter = require('./routes/compare');
+const spreadsRouter = require('./routes/spreads');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,6 +15,7 @@ app.use(express.json());
 // API Routes
 app.use('/api/forecast', forecastRouter);
 app.use('/api/compare', compareRouter);
+app.use('/api/forecast/spreads', spreadsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

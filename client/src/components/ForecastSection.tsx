@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Search, TrendingUp, Loader2, AlertCircle, BarChart3, Download } from 'lucide-react';
-import { fetchForecast, ForecastResult } from '../api';
+import { Search, TrendingUp, Loader2, AlertCircle, BarChart3, Download, Scissors } from 'lucide-react';
+import { fetchForecast, fetchSpreadAnalysis, ForecastResult } from '../api';
 import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
@@ -15,6 +15,9 @@ export default function ForecastSection() {
   const [result, setResult] = useState<ForecastResult | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>('all');
   const [showDetails, setShowDetails] = useState(false);
+  const [spreadAnalysis, setSpreadAnalysis] = useState<string | null>(null);
+  const [spreadLoading, setSpreadLoading] = useState(false);
+  const [spreadError, setSpreadError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +27,8 @@ export default function ForecastSection() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setSpreadAnalysis(null);
+    setSpreadError(null);
 
     try {
       const data = await fetchForecast(cleanTicker);
@@ -33,6 +38,20 @@ export default function ForecastSection() {
       setError(err.message || 'Failed to fetch forecast');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSpreadAnalysis = async () => {
+    if (!result) return;
+    setSpreadLoading(true);
+    setSpreadError(null);
+    try {
+      const analysis = await fetchSpreadAnalysis(result);
+      setSpreadAnalysis(analysis);
+    } catch (err: any) {
+      setSpreadError(err.message || 'Failed to generate spread analysis');
+    } finally {
+      setSpreadLoading(false);
     }
   };
 
@@ -383,6 +402,59 @@ export default function ForecastSection() {
               />
             </div>
           )}
+
+          {/* Credit Spread Analysis */}
+          <div className="bg-surface-card border border-edge rounded-lg p-5">
+            {spreadAnalysis ? (
+              <>
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Scissors className="w-5 h-5 text-accent" />
+                  <span className="text-accent">Credit Spread Analysis</span>
+                  <span className="text-xs text-dim font-normal">(Claude)</span>
+                </h3>
+                <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap prose-invert mb-4">
+                  {spreadAnalysis}
+                </div>
+                <button
+                  onClick={handleSpreadAnalysis}
+                  disabled={spreadLoading}
+                  className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
+                >
+                  {spreadLoading ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                  ) : (
+                    'Regenerate Analysis'
+                  )}
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Scissors className="w-5 h-5 text-dim" />
+                    Credit Spread Analysis
+                  </h3>
+                  <p className="text-xs text-dim mt-1">
+                    Get AI-powered credit spread recommendations based on the forecast ranges, volatility regime, and support/resistance levels.
+                  </p>
+                </div>
+                <button
+                  onClick={handleSpreadAnalysis}
+                  disabled={spreadLoading}
+                  className="px-5 py-2.5 bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 flex-shrink-0 ml-4"
+                >
+                  {spreadLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" />Analyzing...</>
+                  ) : (
+                    'Analyze Spreads'
+                  )}
+                </button>
+              </div>
+            )}
+            {spreadError && (
+              <p className="mt-3 text-xs text-red-400">{spreadError}</p>
+            )}
+          </div>
         </div>
       )}
     </div>
