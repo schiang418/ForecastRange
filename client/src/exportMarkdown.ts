@@ -237,6 +237,69 @@ export function generateForecastMarkdown(result: ForecastResult): string {
     lines.push(`| Bollinger Bandwidth | ${result.indicators.bollingerBandwidth.toFixed(4)} |`);
   lines.push('');
 
+  // Volatility / Premium Quality
+  const vm = result.volatilityMetrics;
+  lines.push('## Volatility / Premium Quality');
+  lines.push('');
+  lines.push('| Metric | Value |');
+  lines.push('|--------|-------|');
+  lines.push(`| Current IV | ${vm.currentIVPct != null ? vm.currentIVPct.toFixed(1) + '%' : 'N/A'} |`);
+  lines.push(`| RV(20d) Annualized | ${vm.rv20AnnualizedPct.toFixed(1)}% |`);
+  lines.push(`| IV / RV Ratio | ${vm.ivRvRatio != null ? vm.ivRvRatio.toFixed(2) + 'x' : 'N/A'} |`);
+  lines.push(`| Vol Premium | ${vm.volPremium != null ? (vm.volPremium > 0 ? '+' : '') + vm.volPremium.toFixed(1) + 'pp' : 'N/A'} |`);
+  lines.push(`| IV Percentile (${vm.rvHistoryDays}d) | ${vm.ivPercentile != null ? vm.ivPercentile + '%' : 'N/A'} |`);
+  lines.push(`| IV Rank (${vm.rvHistoryDays}d) | ${vm.ivRank != null ? vm.ivRank + '%' : 'N/A'} |`);
+  lines.push(`| RV Percentile (${vm.rvHistoryDays}d) | ${vm.rvPercentile != null ? vm.rvPercentile + '%' : 'N/A'} |`);
+  lines.push(`| RV Rank (${vm.rvHistoryDays}d) | ${vm.rvRank != null ? vm.rvRank + '%' : 'N/A'} |`);
+  lines.push(`| Volatility Regime | ${vm.regime} |`);
+  lines.push(`| Premium Quality Score | ${vm.premiumScore != null ? vm.premiumScore + '/100' : 'N/A'} |`);
+  lines.push(`| Premium Label | ${vm.premiumLabel ?? 'N/A'} |`);
+  if (vm.rvHistoryRange) {
+    lines.push(`| RV Range (${vm.rvHistoryDays}d) | ${vm.rvHistoryRange.min.toFixed(1)}% — ${vm.rvHistoryRange.max.toFixed(1)}% (median ${vm.rvHistoryRange.median.toFixed(1)}%) |`);
+  }
+  lines.push('');
+
+  // Premium Quality interpretation
+  lines.push('**Interpretation:**');
+  lines.push('');
+  if (vm.premiumLabel === 'rich') {
+    lines.push('- IV is elevated relative to realized vol — premium selling is attractive');
+  } else if (vm.premiumLabel === 'moderately attractive') {
+    lines.push('- IV is moderately above realized vol — premium selling has a modest edge');
+  } else if (vm.premiumLabel === 'neutral') {
+    lines.push('- IV and realized vol are roughly in line — no strong edge for sellers');
+  } else if (vm.premiumLabel === 'cheap') {
+    lines.push('- IV is low relative to realized vol — premium is not attractive for selling');
+  } else {
+    lines.push('- No IV data available — premium quality cannot be assessed');
+  }
+  lines.push('');
+
+  // Volatility panel calculation details
+  lines.push('**Calculation details:**');
+  lines.push('');
+  lines.push('```');
+  lines.push(`RV(20d) annualized = daily_sigma × sqrt(252)`);
+  lines.push(`                   = ${(result.indicators.rv20Daily * 100).toFixed(4)}% × ${Math.sqrt(252).toFixed(4)}`);
+  lines.push(`                   = ${vm.rv20AnnualizedPct.toFixed(1)}%`);
+  if (vm.currentIVPct != null && vm.ivRvRatio != null) {
+    lines.push('');
+    lines.push(`IV/RV ratio        = ${vm.currentIVPct.toFixed(1)}% / ${vm.rv20AnnualizedPct.toFixed(1)}% = ${vm.ivRvRatio.toFixed(2)}x`);
+    lines.push(`Vol premium        = ${vm.currentIVPct.toFixed(1)}% - ${vm.rv20AnnualizedPct.toFixed(1)}% = ${vm.volPremium! > 0 ? '+' : ''}${vm.volPremium!.toFixed(1)}pp`);
+  }
+  if (vm.ivPercentile != null) {
+    lines.push('');
+    lines.push(`IV percentile      = % of ${vm.rvHistoryDays}d RV history below current IV`);
+    lines.push(`                   = ${vm.ivPercentile}% (current IV > ${vm.ivPercentile}% of historical RV values)`);
+  }
+  if (vm.premiumScore != null) {
+    lines.push('');
+    lines.push(`Premium score      = 0.45 × ivPercentile + 0.35 × normalized(IV/RV) + 0.20 × ivTrend`);
+    lines.push(`                   = ${vm.premiumScore}/100 → "${vm.premiumLabel}"`);
+  }
+  lines.push('```');
+  lines.push('');
+
   // IV Term Structure
   if (result.ivTermStructure && result.ivTermStructure.length > 0) {
     lines.push('## IV Term Structure');
@@ -580,8 +643,49 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('```');
   lines.push('');
 
-  // 8. Constants
-  lines.push('### 8. Model Constants');
+  // 8. Volatility / Premium Quality Formulas
+  lines.push('### 8. Volatility / Premium Quality Formulas');
+  lines.push('');
+  lines.push('```');
+  lines.push('IV Percentile (Nd)   = #(historical_RV < current_IV) / N × 100');
+  lines.push('                     → What % of the last N days had annualized RV below current IV');
+  lines.push('                     → Higher = IV is richer relative to history');
+  lines.push('');
+  lines.push('IV Rank (Nd)         = (current_IV - min_RV) / (max_RV - min_RV) × 100');
+  lines.push('                     → Where current IV sits within the historical RV range');
+  lines.push('');
+  lines.push('IV/RV Ratio          = current_IV_annualized / RV20_annualized');
+  lines.push('                     → >1.3 = premium rich, <1.0 = premium cheap');
+  lines.push('');
+  lines.push('Vol Premium          = current_IV - RV20_annualized (in percentage points)');
+  lines.push('');
+  lines.push('RV20 Annualized      = daily_sigma × sqrt(252)');
+  lines.push('');
+  lines.push('Volatility Regime:');
+  lines.push('  current_RV / median_RV_history');
+  lines.push('  > 2.0  → extreme');
+  lines.push('  > 1.5  → elevated');
+  lines.push('  > 0.8  → normal');
+  lines.push('  <= 0.8 → compressed');
+  lines.push('');
+  lines.push('Premium Quality Score = 0.45 × IV_Percentile + 0.35 × normalized(IV/RV) + 0.20 × IV_Trend');
+  lines.push('  IV/RV normalized: (ratio - 1.0) / 1.0 × 100, clamped [0, 100]');
+  lines.push('  IV_Trend: 80 if ratio > 1.3, 50 if > 1.1, else 20');
+  lines.push('');
+  lines.push('Premium Labels:');
+  lines.push('  IV percentile >= 75 AND IV/RV >= 1.3  → "rich"');
+  lines.push('  IV percentile >= 50 AND IV/RV >= 1.1  → "moderately attractive"');
+  lines.push('  IV percentile >= 25                    → "neutral"');
+  lines.push('  else                                   → "cheap"');
+  lines.push('```');
+  lines.push('');
+  lines.push('Note: IV Percentile and IV Rank are computed against the rolling RV(20d) history');
+  lines.push('(not historical IV), since historical IV requires storing daily snapshots over time.');
+  lines.push('This is a good approximation because RV is the fundamental driver of IV.');
+  lines.push('');
+
+  // 9. Constants
+  lines.push('### 9. Model Constants');
   lines.push('');
   lines.push('| Constant | Value | Purpose |');
   lines.push('|----------|-------|---------|');
@@ -592,6 +696,7 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('| STRADDLE_FACTOR | 0.85 | Straddle to expected move conversion |');
   lines.push('| Trading days/week | 5 | Used in sqrt scaling |');
   lines.push('| Annualization factor | 252 | Trading days per year (for IV) |');
+  lines.push('| RV window | 20 days | Rolling realized volatility window |');
   lines.push('');
 
   return lines.join('\n');

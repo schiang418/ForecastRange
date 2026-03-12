@@ -14,6 +14,7 @@ const { computeForecastIndicators } = require('./indicators');
 const { extractAtmIV, extractAtmStraddle } = require('./polygon');
 const { gradientScore } = require('./scoring');
 const { computeSupportResistance, SR_LOOKBACK } = require('./structure');
+const { computeVolatilityMetrics } = require('./volatility');
 
 /**
  * Compute Friday-aligned horizons.
@@ -549,6 +550,13 @@ function computeForecast(bars, optionsChain = null, options = {}) {
       straddle: s.straddle,
       expectedMove: s.expectedMove,
     })) : null,
+    // Volatility / Premium Quality metrics
+    volatilityMetrics: computeVolatilityMetrics(
+      // Use nearest-expiration IV as "current IV" for the panel
+      expirationIVs && expirationIVs.length > 0 ? expirationIVs[0].iv : null,
+      rv20,
+      bars,
+    ),
     horizons: forecastHorizons,
   };
 }

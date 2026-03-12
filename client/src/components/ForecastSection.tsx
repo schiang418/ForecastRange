@@ -136,6 +136,119 @@ export default function ForecastSection() {
             </div>
           </div>
 
+          {/* Volatility / Premium Quality Panel */}
+          {(() => {
+            const vm = result.volatilityMetrics;
+            const premiumColor = vm.premiumLabel === 'rich' ? 'text-green-400'
+              : vm.premiumLabel === 'moderately attractive' ? 'text-blue-400'
+              : vm.premiumLabel === 'neutral' ? 'text-yellow-400'
+              : vm.premiumLabel === 'cheap' ? 'text-red-400' : 'text-dim';
+            const regimeColor = vm.regime === 'extreme' ? 'text-red-400'
+              : vm.regime === 'elevated' ? 'text-orange-400'
+              : vm.regime === 'normal' ? 'text-gray-400'
+              : vm.regime === 'compressed' ? 'text-blue-400' : 'text-dim';
+            return (
+              <div className="bg-surface-card border border-edge rounded-lg p-5">
+                <h3 className="text-sm font-medium text-dim mb-3">Volatility / Premium Quality</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* IV & RV */}
+                  <div>
+                    <div className="text-xs text-dim mb-1">Current IV</div>
+                    <div className="text-lg font-mono font-medium">
+                      {vm.currentIVPct != null ? `${vm.currentIVPct.toFixed(1)}%` : 'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-dim mb-1">RV(20d) Annualized</div>
+                    <div className="text-lg font-mono font-medium">{vm.rv20AnnualizedPct.toFixed(1)}%</div>
+                  </div>
+                  {/* IV/RV Ratio */}
+                  <div>
+                    <div className="text-xs text-dim mb-1">IV / RV Ratio</div>
+                    <div className={`text-lg font-mono font-medium ${vm.ivRvRatio != null && vm.ivRvRatio >= 1.3 ? 'text-green-400' : vm.ivRvRatio != null && vm.ivRvRatio < 1.0 ? 'text-red-400' : ''}`}>
+                      {vm.ivRvRatio != null ? `${vm.ivRvRatio.toFixed(2)}x` : 'N/A'}
+                    </div>
+                    {vm.volPremium != null && (
+                      <div className="text-xs text-dim mt-0.5">
+                        premium: {vm.volPremium > 0 ? '+' : ''}{vm.volPremium.toFixed(1)}pp
+                      </div>
+                    )}
+                  </div>
+                  {/* Regime */}
+                  <div>
+                    <div className="text-xs text-dim mb-1">Vol Regime</div>
+                    <div className={`text-lg font-medium capitalize ${regimeColor}`}>{vm.regime}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                  {/* IV Percentile */}
+                  <div>
+                    <div className="text-xs text-dim mb-1">IV Percentile ({vm.rvHistoryDays}d)</div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${vm.ivPercentile != null && vm.ivPercentile >= 75 ? 'bg-green-500' : vm.ivPercentile != null && vm.ivPercentile >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                          style={{ width: `${vm.ivPercentile ?? 0}%` }}
+                        />
+                      </div>
+                      <span className="font-mono text-sm w-10 text-right">{vm.ivPercentile != null ? `${vm.ivPercentile}%` : 'N/A'}</span>
+                    </div>
+                  </div>
+                  {/* IV Rank */}
+                  <div>
+                    <div className="text-xs text-dim mb-1">IV Rank ({vm.rvHistoryDays}d)</div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${vm.ivRank != null && vm.ivRank >= 75 ? 'bg-green-500' : vm.ivRank != null && vm.ivRank >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                          style={{ width: `${vm.ivRank ?? 0}%` }}
+                        />
+                      </div>
+                      <span className="font-mono text-sm w-10 text-right">{vm.ivRank != null ? `${vm.ivRank}%` : 'N/A'}</span>
+                    </div>
+                  </div>
+                  {/* RV Percentile */}
+                  <div>
+                    <div className="text-xs text-dim mb-1">RV Percentile ({vm.rvHistoryDays}d)</div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-accent"
+                          style={{ width: `${vm.rvPercentile ?? 0}%` }}
+                        />
+                      </div>
+                      <span className="font-mono text-sm w-10 text-right">{vm.rvPercentile != null ? `${vm.rvPercentile}%` : 'N/A'}</span>
+                    </div>
+                  </div>
+                  {/* Premium Score */}
+                  <div>
+                    <div className="text-xs text-dim mb-1">Premium Quality</div>
+                    {vm.premiumScore != null ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${vm.premiumScore >= 70 ? 'bg-green-500' : vm.premiumScore >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                            style={{ width: `${vm.premiumScore}%` }}
+                          />
+                        </div>
+                        <span className={`font-mono text-sm capitalize ${premiumColor}`}>{vm.premiumLabel}</span>
+                      </div>
+                    ) : (
+                      <span className="font-mono text-sm text-dim">N/A (no IV)</span>
+                    )}
+                  </div>
+                </div>
+
+                {vm.rvHistoryRange && (
+                  <div className="mt-3 text-xs text-dim">
+                    RV range ({vm.rvHistoryDays}d): {vm.rvHistoryRange.min.toFixed(1)}% — {vm.rvHistoryRange.max.toFixed(1)}% (median {vm.rvHistoryRange.median.toFixed(1)}%)
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Horizon Tabs */}
           <div className="flex gap-2 flex-wrap">
             {(['all', '1', '2', '3', '4'] as ViewTab[]).map(tab => {
