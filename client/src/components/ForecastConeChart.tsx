@@ -10,6 +10,14 @@ interface Props {
   spot: number;
 }
 
+function formatChartLabel(h: ForecastHorizon): string {
+  if (!h.targetDate) return h.horizon;
+  const [y, m, d] = h.targetDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const mon = date.toLocaleString('en-US', { month: 'short' });
+  return `${mon} ${d}`;
+}
+
 export default function ForecastConeChart({ horizons, spot }: Props) {
   // Build chart data: week 0 (spot) + each horizon
   const data = [
@@ -25,7 +33,7 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
       range50High: spot,
     },
     ...horizons.map((h) => ({
-      week: h.horizon,
+      week: formatChartLabel(h),
       weekNum: h.horizonWeeks,
       center: h.center,
       range90Low: h.range90.low,

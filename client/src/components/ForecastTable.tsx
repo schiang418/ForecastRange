@@ -19,6 +19,14 @@ function confidenceColor(label: string) {
   return 'text-red-400';
 }
 
+function formatTargetDate(dateStr: string | null): string {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const mon = date.toLocaleString('en-US', { month: 'short' });
+  return `${mon} ${d}`;
+}
+
 export default function ForecastTable({ horizons, spot }: Props) {
   return (
     <div className="overflow-x-auto">
@@ -38,7 +46,14 @@ export default function ForecastTable({ horizons, spot }: Props) {
         <tbody>
           {horizons.map((h) => (
             <tr key={h.horizon} className="border-b border-edge/50 hover:bg-surface-hover transition-colors">
-              <td className="py-3 px-4 font-semibold text-accent">{h.horizon}</td>
+              <td className="py-3 px-4 font-semibold text-accent">
+                {h.horizon}
+                {h.targetDate && (
+                  <span className="text-dim text-xs ml-1.5 font-normal">
+                    Fri {formatTargetDate(h.targetDate)}
+                  </span>
+                )}
+              </td>
               <td className="py-3 px-4 text-right">
                 <span className="font-mono">${h.expectedMove.toFixed(2)}</span>
                 <span className="text-dim ml-1">({h.expectedMovePct.toFixed(1)}%)</span>

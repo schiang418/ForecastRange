@@ -134,20 +134,34 @@ export default function ForecastSection() {
           </div>
 
           {/* Horizon Tabs */}
-          <div className="flex gap-2">
-            {(['all', '1', '2', '3', '4'] as ViewTab[]).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === tab
-                    ? 'bg-accent text-white'
-                    : 'bg-surface-card text-dim hover:text-white hover:bg-surface-hover border border-edge'
-                }`}
-              >
-                {tab === 'all' ? 'All Horizons' : `${tab}W`}
-              </button>
-            ))}
+          <div className="flex gap-2 flex-wrap">
+            {(['all', '1', '2', '3', '4'] as ViewTab[]).map(tab => {
+              let label = 'All Horizons';
+              if (tab !== 'all') {
+                const h = result.horizons.find(h => h.horizonWeeks === Number(tab));
+                if (h?.targetDate) {
+                  const [y, m, d] = h.targetDate.split('-').map(Number);
+                  const date = new Date(y, m - 1, d);
+                  const mon = date.toLocaleString('en-US', { month: 'short' });
+                  label = `${tab}W · ${mon} ${d}`;
+                } else {
+                  label = `${tab}W`;
+                }
+              }
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    activeTab === tab
+                      ? 'bg-accent text-white'
+                      : 'bg-surface-card text-dim hover:text-white hover:bg-surface-hover border border-edge'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
           {/* Cone Chart */}

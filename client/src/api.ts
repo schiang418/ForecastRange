@@ -13,6 +13,7 @@ export interface ForecastHorizon {
   horizon: string;
   horizonWeeks: number;
   horizonDays: number;
+  targetDate: string | null;
   center: number;
   expectedMove: number;
   expectedMovePct: number;
