@@ -104,10 +104,10 @@ export default function ForecastSection() {
             <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
               <div>
                 <span className="text-2xl font-bold text-accent">{result.ticker}</span>
-                <span className="text-dim text-sm ml-3">Spot ${result.spot.toFixed(2)}</span>
+                <span className="text-dim text-sm ml-3 cursor-help" title="Current stock price (last close from daily OHLCV bars)">Spot ${result.spot.toFixed(2)}</span>
               </div>
               <div className="flex items-center gap-4 text-sm">
-                <span className="text-dim">
+                <span className="text-dim cursor-help" title="Options data source used for forecasting. Straddle = ATM call+put mid prices (best). IV = implied volatility from options chain. Unavailable = forecast uses only ATR + RV.">
                   Options: {result.straddleAvailable ? (
                     <span className="text-green-400">Straddle ({result.straddleExpirations} exp)</span>
                   ) : result.ivAvailable ? (
@@ -116,20 +116,20 @@ export default function ForecastSection() {
                     <span className="text-yellow-400">Unavailable (ATR+RV fallback)</span>
                   )}
                 </span>
-                <span className="text-dim">
+                <span className="text-dim cursor-help" title="Weighted trend score (-100% to +100%) from EMA20 slope (35%), EMA50 slope (25%), MACD histogram (20%), and RSI regime (20%). Shifts the forecast center up or down.">
                   Trend: <span className={result.trendScore > 0.1 ? 'text-green-400' : result.trendScore < -0.1 ? 'text-red-400' : 'text-gray-400'}>
                     {result.trendScore > 0 ? '+' : ''}{(result.trendScore * 100).toFixed(1)}%
                   </span>
                 </span>
-                <span className="text-dim">Bars: {result.dataPoints}</span>
+                <span className="text-dim cursor-help" title="Number of daily OHLCV bars used for indicator calculations. More bars = more reliable trend and volatility estimates.">Bars: {result.dataPoints}</span>
               </div>
             </div>
             <div className="mt-3 flex gap-4 text-xs text-dim">
-              <span>EMA20: ${result.indicators.ema20?.toFixed(2)}</span>
-              <span>SMA50: ${result.indicators.sma50?.toFixed(2)}</span>
-              <span>RSI: {result.indicators.rsi14?.toFixed(1)}</span>
-              <span>ATR14: ${result.indicators.atr14?.toFixed(2)}</span>
-              <span>RV(20d): {result.indicators.rv20Daily ? (result.indicators.rv20Daily * 100).toFixed(2) + '%' : 'N/A'}</span>
+              <span className="cursor-help" title="20-day Exponential Moving Average. Price above EMA20 = short-term bullish, below = bearish.">EMA20: ${result.indicators.ema20?.toFixed(2)}</span>
+              <span className="cursor-help" title="50-day Simple Moving Average. Major trend indicator — price above SMA50 = medium-term uptrend.">SMA50: ${result.indicators.sma50?.toFixed(2)}</span>
+              <span className="cursor-help" title="14-day Relative Strength Index (0-100). >70 = overbought, <30 = oversold, 50 = neutral.">RSI: {result.indicators.rsi14?.toFixed(1)}</span>
+              <span className="cursor-help" title="14-day Average True Range. Measures average daily price movement in dollars. Used as a volatility component in the forecast blend.">ATR14: ${result.indicators.atr14?.toFixed(2)}</span>
+              <span className="cursor-help" title="20-day realized volatility (daily sigma). Measures actual historical price movement. Annualized by multiplying by √252.">RV(20d): {result.indicators.rv20Daily ? (result.indicators.rv20Daily * 100).toFixed(2) + '%' : 'N/A'}</span>
             </div>
             <div className="mt-1 text-xs text-dim">
               Generated {new Date(result.generatedAt).toLocaleString()}
