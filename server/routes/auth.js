@@ -10,7 +10,9 @@ const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'forecastrange-dev-secret';
 const JWT_EXPIRES_IN = '30d';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_IOS_CLIENT_ID = process.env.GOOGLE_IOS_CLIENT_ID;
 const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS || '').split(',').filter(Boolean);
+const GOOGLE_AUDIENCES = [GOOGLE_CLIENT_ID, GOOGLE_IOS_CLIENT_ID].filter(Boolean);
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -90,7 +92,7 @@ router.post('/google', async (req, res) => {
 
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: GOOGLE_CLIENT_ID,
+      audience: GOOGLE_AUDIENCES,
     });
 
     const payload = ticket.getPayload();
