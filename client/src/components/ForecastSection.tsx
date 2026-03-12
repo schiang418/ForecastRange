@@ -184,7 +184,13 @@ export default function ForecastSection() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                   {/* IV Percentile */}
                   <div>
-                    <div className="text-xs text-dim mb-1 cursor-help" title="Percentage of historical RV values below current IV (approximation — no historical IV data available). Higher = IV is richer than usual. ≥75% is attractive for premium selling.">IV Percentile ({vm.rvHistoryDays}d)</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title={vm.ivPercentileSource === 'iv_history'
+                      ? `Percentage of ${vm.ivHistoryDays} historical IV snapshots below current IV. True IV percentile from stored daily data. ≥75% is attractive for premium selling.`
+                      : `Percentage of historical RV values below current IV (RV approximation — ${vm.ivHistoryDays < 30 ? vm.ivHistoryDays + '/30' : '0'} IV snapshots collected). Will switch to true IV percentile after 30 daily snapshots.`
+                    }>
+                      IV Percentile ({vm.ivPercentileSource === 'iv_history' ? `${vm.ivHistoryDays}d` : `${vm.rvHistoryDays}d`})
+                      {vm.ivPercentileSource === 'rv_approximation' && <span className="text-yellow-400 ml-1" title="Using RV-based approximation — collecting IV history">~</span>}
+                    </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
                         <div
@@ -197,7 +203,13 @@ export default function ForecastSection() {
                   </div>
                   {/* IV Rank */}
                   <div>
-                    <div className="text-xs text-dim mb-1 cursor-help" title="Where current IV sits in the historical min-max RV range (approximation — no historical IV data). 0% = at RV floor, 100% = at or above RV ceiling. Both IV metrics use RV history as proxy, so they tend to correlate.">IV Rank ({vm.rvHistoryDays}d)</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title={vm.ivPercentileSource === 'iv_history'
+                      ? `Where current IV sits in the ${vm.ivHistoryDays}-day historical IV min-max range. 0% = at IV floor, 100% = at IV ceiling.`
+                      : `Where current IV sits in the historical min-max RV range (RV approximation). Will switch to true IV rank after 30 daily snapshots.`
+                    }>
+                      IV Rank ({vm.ivPercentileSource === 'iv_history' ? `${vm.ivHistoryDays}d` : `${vm.rvHistoryDays}d`})
+                      {vm.ivPercentileSource === 'rv_approximation' && <span className="text-yellow-400 ml-1" title="Using RV-based approximation — collecting IV history">~</span>}
+                    </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
                         <div
@@ -240,11 +252,20 @@ export default function ForecastSection() {
                   </div>
                 </div>
 
-                {vm.rvHistoryRange && (
-                  <div className="mt-3 text-xs text-dim">
-                    RV range ({vm.rvHistoryDays}d): {vm.rvHistoryRange.min.toFixed(1)}% — {vm.rvHistoryRange.max.toFixed(1)}% (median {vm.rvHistoryRange.median.toFixed(1)}%)
-                  </div>
-                )}
+                <div className="mt-3 text-xs text-dim space-y-0.5">
+                  {vm.rvHistoryRange && (
+                    <div>RV range ({vm.rvHistoryDays}d): {vm.rvHistoryRange.min.toFixed(1)}% — {vm.rvHistoryRange.max.toFixed(1)}% (median {vm.rvHistoryRange.median.toFixed(1)}%)</div>
+                  )}
+                  {vm.ivHistoryRange && (
+                    <div>IV range ({vm.ivHistoryDays}d): {vm.ivHistoryRange.min.toFixed(1)}% — {vm.ivHistoryRange.max.toFixed(1)}% (median {vm.ivHistoryRange.median.toFixed(1)}%)</div>
+                  )}
+                  {vm.ivPercentileSource === 'rv_approximation' && vm.ivHistoryDays > 0 && (
+                    <div className="text-yellow-400/80">IV percentile uses RV approximation ({vm.ivHistoryDays}/30 snapshots collected)</div>
+                  )}
+                  {vm.ivPercentileSource === 'rv_approximation' && vm.ivHistoryDays === 0 && (
+                    <div className="text-yellow-400/80">IV percentile uses RV approximation (no IV history yet — run backfill or accumulate daily)</div>
+                  )}
+                </div>
               </div>
             );
           })()}

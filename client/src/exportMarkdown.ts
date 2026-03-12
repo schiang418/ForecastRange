@@ -247,8 +247,11 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push(`| RV(20d) Annualized | ${vm.rv20AnnualizedPct.toFixed(1)}% |`);
   lines.push(`| IV / RV Ratio | ${vm.ivRvRatio != null ? vm.ivRvRatio.toFixed(2) + 'x' : 'N/A'} |`);
   lines.push(`| Vol Premium | ${vm.volPremium != null ? (vm.volPremium > 0 ? '+' : '') + vm.volPremium.toFixed(1) + 'pp' : 'N/A'} |`);
-  lines.push(`| IV Percentile (${vm.rvHistoryDays}d) | ${vm.ivPercentile != null ? vm.ivPercentile + '%' : 'N/A'} |`);
-  lines.push(`| IV Rank (${vm.rvHistoryDays}d) | ${vm.ivRank != null ? vm.ivRank + '%' : 'N/A'} |`);
+  const ivPctDays = vm.ivPercentileSource === 'iv_history' ? vm.ivHistoryDays : vm.rvHistoryDays;
+  const ivPctNote = vm.ivPercentileSource === 'rv_approximation' ? ' (RV approx)' : '';
+  lines.push(`| IV Percentile (${ivPctDays}d)${ivPctNote} | ${vm.ivPercentile != null ? vm.ivPercentile + '%' : 'N/A'} |`);
+  lines.push(`| IV Rank (${ivPctDays}d)${ivPctNote} | ${vm.ivRank != null ? vm.ivRank + '%' : 'N/A'} |`);
+  lines.push(`| IV Percentile Source | ${vm.ivPercentileSource === 'iv_history' ? `IV history (${vm.ivHistoryDays} days)` : `RV approximation (${vm.ivHistoryDays} IV snapshots)`} |`);
   lines.push(`| RV Percentile (${vm.rvHistoryDays}d) | ${vm.rvPercentile != null ? vm.rvPercentile + '%' : 'N/A'} |`);
   lines.push(`| RV Rank (${vm.rvHistoryDays}d) | ${vm.rvRank != null ? vm.rvRank + '%' : 'N/A'} |`);
   lines.push(`| Volatility Regime | ${vm.regime} |`);
@@ -256,6 +259,9 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push(`| Premium Label | ${vm.premiumLabel ?? 'N/A'} |`);
   if (vm.rvHistoryRange) {
     lines.push(`| RV Range (${vm.rvHistoryDays}d) | ${vm.rvHistoryRange.min.toFixed(1)}% — ${vm.rvHistoryRange.max.toFixed(1)}% (median ${vm.rvHistoryRange.median.toFixed(1)}%) |`);
+  }
+  if (vm.ivHistoryRange) {
+    lines.push(`| IV Range (${vm.ivHistoryDays}d) | ${vm.ivHistoryRange.min.toFixed(1)}% — ${vm.ivHistoryRange.max.toFixed(1)}% (median ${vm.ivHistoryRange.median.toFixed(1)}%) |`);
   }
   lines.push('');
 
@@ -289,8 +295,15 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   }
   if (vm.ivPercentile != null) {
     lines.push('');
-    lines.push(`IV percentile      = % of ${vm.rvHistoryDays}d RV history below current IV`);
-    lines.push(`                   = ${vm.ivPercentile}% (current IV > ${vm.ivPercentile}% of historical RV values)`);
+    if (vm.ivPercentileSource === 'iv_history') {
+      lines.push(`IV percentile      = % of ${vm.ivHistoryDays}d IV history below current IV`);
+      lines.push(`                   = ${vm.ivPercentile}% (current IV > ${vm.ivPercentile}% of historical IV values)`);
+      lines.push(`                   [source: true IV history from daily snapshots]`);
+    } else {
+      lines.push(`IV percentile      = % of ${vm.rvHistoryDays}d RV history below current IV (approximation)`);
+      lines.push(`                   = ${vm.ivPercentile}% (current IV > ${vm.ivPercentile}% of historical RV values)`);
+      lines.push(`                   [source: RV approximation — IV history: ${vm.ivHistoryDays}/30 snapshots]`);
+    }
   }
   if (vm.premiumScore != null) {
     lines.push('');
@@ -647,12 +660,16 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('### 8. Volatility / Premium Quality Formulas');
   lines.push('');
   lines.push('```');
-  lines.push('IV Percentile (Nd)   = #(historical_RV < current_IV) / N × 100');
-  lines.push('                     → What % of the last N days had annualized RV below current IV');
+  lines.push('IV Percentile (Nd):');
+  lines.push('  With IV history:   = #(historical_IV < current_IV) / N × 100');
+  lines.push('                     → True percentile against daily IV snapshots');
+  lines.push('  Without IV history:= #(historical_RV < current_IV) / N × 100');
+  lines.push('                     → RV approximation (tends to overstate percentile)');
   lines.push('                     → Higher = IV is richer relative to history');
   lines.push('');
-  lines.push('IV Rank (Nd)         = (current_IV - min_RV) / (max_RV - min_RV) × 100');
-  lines.push('                     → Where current IV sits within the historical RV range');
+  lines.push('IV Rank (Nd):');
+  lines.push('  With IV history:   = (current_IV - min_IV) / (max_IV - min_IV) × 100');
+  lines.push('  Without IV history:= (current_IV - min_RV) / (max_RV - min_RV) × 100');
   lines.push('');
   lines.push('IV/RV Ratio          = current_IV_annualized / RV20_annualized');
   lines.push('                     → >1.3 = premium rich, <1.0 = premium cheap');
@@ -679,9 +696,13 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('  else                                   → "cheap"');
   lines.push('```');
   lines.push('');
-  lines.push('Note: IV Percentile and IV Rank are computed against the rolling RV(20d) history');
-  lines.push('(not historical IV), since historical IV requires storing daily snapshots over time.');
-  lines.push('This is a good approximation because RV is the fundamental driver of IV.');
+  if (vm.ivPercentileSource === 'iv_history') {
+    lines.push(`Note: IV Percentile and IV Rank use true IV history (${vm.ivHistoryDays} daily snapshots).`);
+  } else {
+    lines.push(`Note: IV Percentile and IV Rank use RV-based approximation (${vm.ivHistoryDays}/30 IV snapshots collected).`);
+    lines.push('This tends to overstate IV percentile because IV > RV most of the time.');
+    lines.push('True IV percentile will be used once 30+ daily IV snapshots are available.');
+  }
   lines.push('');
 
   // 9. Constants

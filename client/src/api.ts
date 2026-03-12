@@ -124,6 +124,9 @@ export interface VolatilityMetrics {
   volPremium: number | null;
   ivPercentile: number | null;
   ivRank: number | null;
+  ivPercentileSource: 'iv_history' | 'rv_approximation';
+  ivHistoryDays: number;
+  ivHistoryRange: { min: number; max: number; median: number } | null;
   rvPercentile: number | null;
   rvRank: number | null;
   regime: string;

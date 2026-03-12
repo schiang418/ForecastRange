@@ -1,11 +1,11 @@
 /**
  * Volatility metrics and premium quality scoring.
  *
- * Computes IV/RV ratio, RV percentile, and premium quality score
- * from daily OHLCV bars and current options-derived IV.
+ * Computes IV/RV ratio, IV percentile, IV rank, and premium quality score.
  *
- * Uses rolling realized volatility history as the baseline distribution,
- * since historical IV requires storing daily snapshots over time.
+ * When historical IV snapshots are available (from the iv_history table),
+ * IV percentile and IV rank are computed against the true IV distribution.
+ * Otherwise falls back to the RV-based approximation.
  */
 
 /**
@@ -45,9 +45,10 @@ function computeRollingRV(bars, window = 20) {
  * @param {number|null} currentIV - Current interpolated IV (annualized, decimal e.g. 1.218 for 121.8%)
  * @param {number} rv20Daily - Current 20-day realized vol (daily sigma, not annualized)
  * @param {Array} bars - OHLCV bars for computing RV history
+ * @param {Array|null} ivHistoryRows - Historical IV snapshots [{date, iv}] from DB (optional)
  * @returns {Object} Volatility metrics panel data
  */
-function computeVolatilityMetrics(currentIV, rv20Daily, bars) {
+function computeVolatilityMetrics(currentIV, rv20Daily, bars, ivHistoryRows = null) {
   const rv20Annualized = rv20Daily * Math.sqrt(252);
 
   // Compute rolling RV history for percentile calculations
@@ -74,6 +75,11 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars) {
     }
   }
 
+  // --- Determine if we have enough IV history for true IV percentile ---
+  const IV_HISTORY_MIN_DAYS = 30;
+  const hasIVHistory = ivHistoryRows != null && ivHistoryRows.length >= IV_HISTORY_MIN_DAYS;
+  const ivPercentileSource = hasIVHistory ? 'iv_history' : 'rv_approximation';
+
   // --- IV-specific metrics (only when IV is available) ---
   let ivRvRatio = null;
   let volPremium = null;
@@ -87,26 +93,37 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars) {
     // Vol premium: IV - RV (in percentage points)
     volPremium = round2((currentIV - rv20Annualized) * 100);
 
-    // IV Percentile: compare current IV against historical RV distribution
-    // This is an approximation since we don't have historical IV series.
-    // It answers: "Is current IV higher than most historical realized vol periods?"
-    if (rvHistory.length >= 20) {
-      const annualizedValues = rvHistory.map(r => r.rvAnnualized);
-      const belowCount = annualizedValues.filter(v => v < currentIV).length;
-      ivPercentile = Math.round((belowCount / annualizedValues.length) * 100);
-    }
+    if (hasIVHistory) {
+      // TRUE IV Percentile: compare current IV against historical IV distribution
+      const historicalIVs = ivHistoryRows.map(r => r.iv);
+      const belowCount = historicalIVs.filter(v => v < currentIV).length;
+      ivPercentile = Math.round((belowCount / historicalIVs.length) * 100);
 
-    // IV Rank against RV history range (not expanded by currentIV)
-    // This shows where IV sits relative to the historical RV range.
-    // Can exceed 100% conceptually but is clamped — values near 100 mean
-    // IV is at or above the highest RV seen in the lookback window.
-    if (rvHistory.length >= 20) {
-      const annualizedValues = rvHistory.map(r => r.rvAnnualized);
-      const rvMin = Math.min(...annualizedValues);
-      const rvMax = Math.max(...annualizedValues);
-      if (rvMax > rvMin) {
-        ivRank = Math.round(((currentIV - rvMin) / (rvMax - rvMin)) * 100);
+      // TRUE IV Rank: min-max scaling against historical IV range
+      const ivMin = Math.min(...historicalIVs);
+      const ivMax = Math.max(...historicalIVs);
+      if (ivMax > ivMin) {
+        ivRank = Math.round(((currentIV - ivMin) / (ivMax - ivMin)) * 100);
         ivRank = Math.max(0, Math.min(100, ivRank));
+      }
+    } else {
+      // FALLBACK: compare current IV against historical RV distribution
+      // This is an approximation — will tend to produce high percentiles
+      // because IV > RV most of the time.
+      if (rvHistory.length >= 20) {
+        const annualizedValues = rvHistory.map(r => r.rvAnnualized);
+        const belowCount = annualizedValues.filter(v => v < currentIV).length;
+        ivPercentile = Math.round((belowCount / annualizedValues.length) * 100);
+      }
+
+      if (rvHistory.length >= 20) {
+        const annualizedValues = rvHistory.map(r => r.rvAnnualized);
+        const rvMin = Math.min(...annualizedValues);
+        const rvMax = Math.max(...annualizedValues);
+        if (rvMax > rvMin) {
+          ivRank = Math.round(((currentIV - rvMin) / (rvMax - rvMin)) * 100);
+          ivRank = Math.max(0, Math.min(100, ivRank));
+        }
       }
     }
   }
@@ -132,6 +149,17 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars) {
     premiumLabel = premiumScoreLabel(premiumScore, ivPercentile, ivRvRatio);
   }
 
+  // --- IV history context ---
+  let ivHistoryRange = null;
+  if (hasIVHistory) {
+    const historicalIVs = ivHistoryRows.map(r => r.iv);
+    ivHistoryRange = {
+      min: round2(Math.min(...historicalIVs) * 100),
+      max: round2(Math.max(...historicalIVs) * 100),
+      median: round2(median(historicalIVs) * 100),
+    };
+  }
+
   return {
     // Current values
     currentIV: currentIV != null ? round4(currentIV) : null,
@@ -144,6 +172,11 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars) {
     volPremium,
     ivPercentile,
     ivRank,
+
+    // Source tracking — tells the UI which method was used
+    ivPercentileSource,
+    ivHistoryDays: hasIVHistory ? ivHistoryRows.length : 0,
+    ivHistoryRange,
 
     // RV metrics (always available)
     rvPercentile,
