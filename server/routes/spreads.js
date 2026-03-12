@@ -45,7 +45,17 @@ Key principles:
 - Consider support/resistance as natural barriers that add safety — a sold strike with S/R backing is stronger.
 - Iron condors (both put + call spread) are best in neutral/compressed regimes.
 
+IMPORTANT: You MUST evaluate BOTH a put credit spread AND a call credit spread for every analysis. Present both sides with specific strikes, then explain which you recommend and why the other side is less attractive. Do not default to put spreads — give call spreads equal consideration. If both sides look viable, recommend an iron condor.
+
 Output format — use this EXACT structure:
+
+**PUT CREDIT SPREAD EVALUATION:**
+- Sell PUT at $[strike] / Buy PUT at $[strike]
+- Why it works or doesn't: [brief reasoning based on forecast, trend, S/R]
+
+**CALL CREDIT SPREAD EVALUATION:**
+- Sell CALL at $[strike] / Buy CALL at $[strike]
+- Why it works or doesn't: [brief reasoning based on forecast, trend, S/R]
 
 **RECOMMENDATION: [PUT CREDIT SPREAD / CALL CREDIT SPREAD / IRON CONDOR / NO TRADE]**
 
