@@ -58,17 +58,9 @@ router.post('/', async (req, res) => {
     // Build hardcoded comparison
     const comparison = buildComparison(successful);
 
-    // Generate AI narrative (non-blocking — if it fails, we still return data)
-    let narrative = null;
-    try {
-      narrative = await generateNarrative(comparison);
-    } catch (err) {
-      console.warn(`[compare] Narrative generation failed: ${err.message}`);
-    }
-
     res.json({
       comparison,
-      narrative,
+      narrative: null,
       failed: failed.length > 0
         ? failed.map(f => ({ ticker: f.ticker, error: f.error || f.result?.error }))
         : undefined,
@@ -79,6 +71,32 @@ router.post('/', async (req, res) => {
       return res.status(429).json({ error: 'Rate limit exceeded. Please try again in a moment.' });
     }
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/compare/narrative
+ * Body: { comparison: { tickers: [...] } }
+ *
+ * Generates AI narrative from an existing comparison result.
+ * Separate endpoint so it's only called on user request.
+ */
+router.post('/narrative', async (req, res) => {
+  try {
+    const { comparison } = req.body;
+    if (!comparison?.tickers || comparison.tickers.length < 2) {
+      return res.status(400).json({ error: 'Valid comparison data required' });
+    }
+
+    const narrative = await generateNarrative(comparison);
+    if (!narrative) {
+      return res.status(400).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    }
+
+    res.json({ narrative });
+  } catch (err) {
+    console.error('[compare/narrative] Error:', err);
+    res.status(500).json({ error: 'Failed to generate narrative' });
   }
 });
 

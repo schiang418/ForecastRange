@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Loader2, AlertCircle, Download, Trophy, Plus, X, Info } from 'lucide-react';
-import { fetchComparison, CompareResult, CompareTickerResult } from '../api';
+import { fetchComparison, fetchNarrative, CompareResult, CompareTickerResult } from '../api';
 
 // --- Tooltip descriptions ---
 const TOOLTIPS = {
@@ -143,6 +143,8 @@ export default function CompareSection() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CompareResult | null>(null);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [narrativeError, setNarrativeError] = useState<string | null>(null);
 
   const addTicker = () => {
     if (tickers.length < 10) {
@@ -181,6 +183,20 @@ export default function CompareSection() {
       setError(err.message || 'Failed to fetch comparison');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunNarrative = async () => {
+    if (!result) return;
+    setNarrativeLoading(true);
+    setNarrativeError(null);
+    try {
+      const narrative = await fetchNarrative(result.comparison);
+      setResult({ ...result, narrative });
+    } catch (err: any) {
+      setNarrativeError(err.message || 'Failed to generate narrative');
+    } finally {
+      setNarrativeLoading(false);
     }
   };
 
@@ -374,17 +390,51 @@ export default function CompareSection() {
           </div>
 
           {/* AI Narrative */}
-          {result.narrative && (
-            <div className="bg-surface-card border border-accent/30 rounded-lg p-5">
-              <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <span className="text-accent">AI Analysis</span>
-                <span className="text-xs text-dim font-normal">(Claude)</span>
-              </h2>
-              <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap">
-                {result.narrative}
+          <div className="bg-surface-card border border-edge rounded-lg p-5">
+            {result.narrative ? (
+              <>
+                <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <span className="text-accent">AI Analysis</span>
+                  <span className="text-xs text-dim font-normal">(Claude)</span>
+                </h2>
+                <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap mb-4">
+                  {result.narrative}
+                </div>
+                <button
+                  onClick={handleRunNarrative}
+                  disabled={narrativeLoading}
+                  className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
+                >
+                  {narrativeLoading ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                  ) : (
+                    'Regenerate'
+                  )}
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">AI Analysis</h2>
+                  <p className="text-xs text-dim mt-1">Get a narrative comparison from Claude analyzing the volatility profiles and premium selling opportunities.</p>
+                </div>
+                <button
+                  onClick={handleRunNarrative}
+                  disabled={narrativeLoading}
+                  className="px-5 py-2.5 bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 flex-shrink-0 ml-4"
+                >
+                  {narrativeLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" />Analyzing...</>
+                  ) : (
+                    'Run AI Analysis'
+                  )}
+                </button>
               </div>
-            </div>
-          )}
+            )}
+            {narrativeError && (
+              <p className="mt-3 text-xs text-red-400">{narrativeError}</p>
+            )}
+          </div>
 
           {/* Download */}
           <div className="flex justify-end">
