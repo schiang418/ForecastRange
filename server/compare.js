@@ -172,7 +172,7 @@ async function generateNarrative(comparison) {
     ).join('\n');
 
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-5-20241022',
+      model: 'claude-opus-4-6',
       max_tokens: 1024,
       system: `You are a concise options analyst specializing in premium selling strategies.
 Write a 2-4 paragraph comparison of the tickers below for a trader looking to sell options premium.
