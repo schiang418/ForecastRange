@@ -38,10 +38,11 @@ Your job: analyze the forecast data and recommend specific credit spread setups.
 Key principles:
 - Put credit spread: sell a put at a higher strike, buy a put at a lower strike. Risk = price drops below the sold put.
 - Call credit spread: sell a call at a lower strike, buy a call at a higher strike. Risk = price rises above the sold call.
-- For SAFETY, the sold strike should be OUTSIDE the forecast's probability band (e.g., outside the 90% range means ~5% chance of breach per side).
+- For a good risk/reward balance, place the sold strike near or just outside the 68% range (1-sigma, ~16% chance of breach per side). This gives meaningful premium while keeping probability of profit around 80-85%.
+- The 50% range is aggressive (more premium but ~25% breach risk). The 90% range is too conservative (tiny premium, not worth the capital).
 - Use $5 or $10 wide spreads for liquid stocks; $1-$2.50 for stocks under $50.
 - Consider the trend/skew: if bullish, put spreads are safer; if bearish, call spreads are safer.
-- Consider support/resistance as natural barriers that increase safety.
+- Consider support/resistance as natural barriers that add safety — a sold strike with S/R backing is stronger.
 - Iron condors (both put + call spread) are best in neutral/compressed regimes.
 
 Output format — use this EXACT structure:
