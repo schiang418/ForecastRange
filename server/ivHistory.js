@@ -86,4 +86,13 @@ async function getIVHistoryCount(ticker) {
   return result[0]?.count || 0;
 }
 
-module.exports = { upsertIV, bulkUpsertIV, getIVHistory, getIVHistoryCount };
+/**
+ * Delete all backfill-sourced rows for a ticker (preserves live data).
+ */
+async function deleteBackfillData(ticker) {
+  const db = getDb();
+  await db.delete(ivHistory)
+    .where(and(eq(ivHistory.ticker, ticker), eq(ivHistory.source, 'backfill')));
+}
+
+module.exports = { upsertIV, bulkUpsertIV, getIVHistory, getIVHistoryCount, deleteBackfillData };
