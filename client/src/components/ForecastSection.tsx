@@ -3,6 +3,7 @@ import { Search, TrendingUp, Loader2, AlertCircle, BarChart3 } from 'lucide-reac
 import { fetchForecast, ForecastResult } from '../api';
 import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
+import ForecastDetails from './ForecastDetails';
 
 type ViewTab = 'all' | '1' | '2' | '3' | '4';
 
@@ -12,6 +13,7 @@ export default function ForecastSection() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ForecastResult | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>('all');
+  const [showDetails, setShowDetails] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,6 +171,33 @@ export default function ForecastSection() {
           <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
             <ForecastTable horizons={filteredHorizons} spot={result.spot} />
           </div>
+
+          {/* Calculation Details Toggle */}
+          <div>
+            <button
+              onClick={() => setShowDetails(!showDetails)}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-surface-card text-dim hover:text-white hover:bg-surface-hover border border-edge"
+            >
+              {showDetails ? 'Hide' : 'Show'} Calculation Details
+            </button>
+          </div>
+
+          {/* Calculation Details */}
+          {showDetails && (
+            <div className="bg-surface-card border border-edge rounded-lg p-5">
+              <h3 className="text-sm font-medium text-dim mb-4">
+                Intermediate Calculations — {activeTab === 'all' ? '1W' : `${activeTab}W`}
+              </h3>
+              <ForecastDetails
+                result={result}
+                selectedHorizon={
+                  activeTab === 'all'
+                    ? result.horizons[0]
+                    : result.horizons.find(h => h.horizonWeeks === Number(activeTab)) || result.horizons[0]
+                }
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

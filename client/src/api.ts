@@ -1,3 +1,14 @@
+export interface WeightedComponent {
+  value: number;
+  weight: number;
+}
+
+export interface TrendComponent {
+  raw: number | null;
+  normalized: number;
+  weight: number;
+}
+
 export interface ForecastHorizon {
   horizon: string;
   horizonWeeks: number;
@@ -19,6 +30,29 @@ export interface ForecastHorizon {
     rvMove: number;
     ivMove: number | null;
   };
+  blending: {
+    weights: Record<string, number>;
+    contributions: Record<string, number>;
+    formula: string;
+  };
+  confidenceBreakdown: Record<string, WeightedComponent>;
+  trendDriftCalc: {
+    formula: string;
+    values: { spot: number; k: number; trendScore: number; sqrtFactor: number };
+    result: number;
+  };
+  bandCalc: {
+    sigmaMultipliers: { band50: number; band68: number; band90: number };
+    moveUsed: number;
+    centerUsed: number;
+  };
+}
+
+export interface TrendBreakdown {
+  ema20Slope: TrendComponent;
+  ema50Slope: TrendComponent;
+  macdHistogram: TrendComponent;
+  rsiRegime: TrendComponent;
 }
 
 export interface ForecastResult {
@@ -29,6 +63,7 @@ export interface ForecastResult {
   ivAvailable: boolean;
   ivExpirations: number;
   trendScore: number;
+  trendBreakdown: TrendBreakdown;
   indicators: {
     ema20: number;
     sma50: number;

@@ -64,7 +64,17 @@ function computeTrendScore(indicators) {
     : 0;
 
   // Weighted combination
-  return 0.35 * normEma20 + 0.25 * normEma50 + 0.20 * normMacd + 0.20 * normRsi;
+  const score = 0.35 * normEma20 + 0.25 * normEma50 + 0.20 * normMacd + 0.20 * normRsi;
+
+  return {
+    score,
+    components: {
+      ema20Slope: { raw: ema20Slope != null ? ema20Slope * 100 : null, normalized: round4(normEma20), weight: 0.35 },
+      ema50Slope: { raw: ema50Slope != null ? ema50Slope * 100 : null, normalized: round4(normEma50), weight: 0.25 },
+      macdHistogram: { raw: macdResult ? (macdResult.histogram / indicators.close) * 100 : null, normalized: round4(normMacd), weight: 0.20 },
+      rsiRegime: { raw: rsi14, normalized: round4(normRsi), weight: 0.20 },
+    },
+  };
 }
 
 /**
@@ -129,10 +139,25 @@ function computeConfidence(atrMove, rvMove, ivMove, trendScore) {
     const maxVal = Math.max(ivMove, avgMove);
     const ivAgreement = maxVal > 0 ? 1 - Math.abs(ivMove - avgMove) / maxVal : 0.5;
 
-    return 0.35 * volAgreement + 0.30 * ivAgreement + 0.35 * trendClarity;
+    const score = 0.35 * volAgreement + 0.30 * ivAgreement + 0.35 * trendClarity;
+    return {
+      score,
+      components: {
+        volAgreement: { value: round4(volAgreement), weight: 0.35 },
+        ivAgreement: { value: round4(ivAgreement), weight: 0.30 },
+        trendClarity: { value: round4(trendClarity), weight: 0.35 },
+      },
+    };
   }
 
-  return 0.50 * volAgreement + 0.50 * trendClarity;
+  const score = 0.50 * volAgreement + 0.50 * trendClarity;
+  return {
+    score,
+    components: {
+      volAgreement: { value: round4(volAgreement), weight: 0.50 },
+      trendClarity: { value: round4(trendClarity), weight: 0.50 },
+    },
+  };
 }
 
 /**
@@ -184,7 +209,8 @@ function computeForecast(bars, optionsChain = null, options = {}) {
   const ivAvailable = expirationIVs != null && expirationIVs.length > 0;
 
   // Compute trend score
-  const trendScore = computeTrendScore(indicators);
+  const trendResult = computeTrendScore(indicators);
+  const trendScore = trendResult.score;
 
   // Compute forecast for each horizon
   const today = new Date();
@@ -207,14 +233,27 @@ function computeForecast(bars, optionsChain = null, options = {}) {
       }
     }
 
-    // Blended move
+    // Blended move with detailed weight breakdown
     let blendedMove;
+    let blendWeights;
+    let blendContributions;
     if (ivMove != null) {
       const [wIV, wATR, wRV, wStruct] = BLEND_WEIGHTS_WITH_IV[weeks] || BLEND_WEIGHTS_WITH_IV[4];
-      // structure_adj is 0 in Phase 1
       blendedMove = wIV * ivMove + wATR * atrMove + wRV * rvMove + wStruct * 0;
+      blendWeights = { iv: wIV, atr: wATR, rv: wRV, structure: wStruct };
+      blendContributions = {
+        iv: round2(wIV * ivMove),
+        atr: round2(wATR * atrMove),
+        rv: round2(wRV * rvMove),
+        structure: 0,
+      };
     } else {
       blendedMove = BLEND_WEIGHTS_FALLBACK.atr * atrMove + BLEND_WEIGHTS_FALLBACK.rv * rvMove;
+      blendWeights = { atr: BLEND_WEIGHTS_FALLBACK.atr, rv: BLEND_WEIGHTS_FALLBACK.rv };
+      blendContributions = {
+        atr: round2(BLEND_WEIGHTS_FALLBACK.atr * atrMove),
+        rv: round2(BLEND_WEIGHTS_FALLBACK.rv * rvMove),
+      };
     }
 
     // Trend drift
@@ -226,8 +265,8 @@ function computeForecast(bars, optionsChain = null, options = {}) {
     const range68 = { low: center - SIGMA_68 * blendedMove, high: center + SIGMA_68 * blendedMove };
     const range90 = { low: center - SIGMA_90 * blendedMove, high: center + SIGMA_90 * blendedMove };
 
-    // Confidence
-    const confidence = computeConfidence(atrMove, rvMove, ivMove, trendScore);
+    // Confidence with sub-components
+    const confidenceResult = computeConfidence(atrMove, rvMove, ivMove, trendScore);
 
     // Expected move as percentage
     const expectedMovePct = (blendedMove / spot) * 100;
@@ -244,14 +283,32 @@ function computeForecast(bars, optionsChain = null, options = {}) {
       range90: { low: round2(range90.low), high: round2(range90.high) },
       skew: skewLabel(trendDrift, spot),
       trendDrift: round2(trendDrift),
-      confidence: round2(confidence),
-      confidenceLabel: confidenceLabel(confidence),
+      confidence: round2(confidenceResult.score),
+      confidenceLabel: confidenceLabel(confidenceResult.score),
       ivAvailable: ivMove != null,
       ivUsed: horizonIV != null ? round4(horizonIV) : null,
       components: {
         atrMove: round2(atrMove),
         rvMove: round2(rvMove),
         ivMove: ivMove != null ? round2(ivMove) : null,
+      },
+      blending: {
+        weights: blendWeights,
+        contributions: blendContributions,
+        formula: ivMove != null
+          ? `${blendWeights.iv}*IV + ${blendWeights.atr}*ATR + ${blendWeights.rv}*RV + ${blendWeights.structure}*S/R`
+          : `${blendWeights.atr}*ATR + ${blendWeights.rv}*RV`,
+      },
+      confidenceBreakdown: confidenceResult.components,
+      trendDriftCalc: {
+        formula: `spot * k * trendScore * sqrt(h/5)`,
+        values: { spot: round2(spot), k: TREND_DRIFT_K, trendScore: round4(trendScore), sqrtFactor: round4(Math.sqrt(h / 5)) },
+        result: round2(trendDrift),
+      },
+      bandCalc: {
+        sigmaMultipliers: { band50: SIGMA_50, band68: SIGMA_68, band90: SIGMA_90 },
+        moveUsed: round2(blendedMove),
+        centerUsed: round2(center),
       },
     };
   });
@@ -264,6 +321,7 @@ function computeForecast(bars, optionsChain = null, options = {}) {
     ivAvailable,
     ivExpirations: expirationIVs ? expirationIVs.length : 0,
     trendScore: round4(trendScore),
+    trendBreakdown: trendResult.components,
     indicators: {
       ema20: round2(indicators.ema20),
       sma50: round2(indicators.sma50),
