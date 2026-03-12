@@ -104,10 +104,10 @@ export default function ForecastSection() {
             <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
               <div>
                 <span className="text-2xl font-bold text-accent">{result.ticker}</span>
-                <span className="text-dim text-sm ml-3">Spot ${result.spot.toFixed(2)}</span>
+                <span className="text-dim text-sm ml-3 cursor-help" title="Current stock price (last close from daily OHLCV bars)">Spot ${result.spot.toFixed(2)}</span>
               </div>
               <div className="flex items-center gap-4 text-sm">
-                <span className="text-dim">
+                <span className="text-dim cursor-help" title="Options data source used for forecasting. Straddle = ATM call+put mid prices (best). IV = implied volatility from options chain. Unavailable = forecast uses only ATR + RV.">
                   Options: {result.straddleAvailable ? (
                     <span className="text-green-400">Straddle ({result.straddleExpirations} exp)</span>
                   ) : result.ivAvailable ? (
@@ -116,20 +116,20 @@ export default function ForecastSection() {
                     <span className="text-yellow-400">Unavailable (ATR+RV fallback)</span>
                   )}
                 </span>
-                <span className="text-dim">
+                <span className="text-dim cursor-help" title="Weighted trend score (-100% to +100%) from EMA20 slope (35%), EMA50 slope (25%), MACD histogram (20%), and RSI regime (20%). Shifts the forecast center up or down.">
                   Trend: <span className={result.trendScore > 0.1 ? 'text-green-400' : result.trendScore < -0.1 ? 'text-red-400' : 'text-gray-400'}>
                     {result.trendScore > 0 ? '+' : ''}{(result.trendScore * 100).toFixed(1)}%
                   </span>
                 </span>
-                <span className="text-dim">Bars: {result.dataPoints}</span>
+                <span className="text-dim cursor-help" title="Number of daily OHLCV bars used for indicator calculations. More bars = more reliable trend and volatility estimates.">Bars: {result.dataPoints}</span>
               </div>
             </div>
             <div className="mt-3 flex gap-4 text-xs text-dim">
-              <span>EMA20: ${result.indicators.ema20?.toFixed(2)}</span>
-              <span>SMA50: ${result.indicators.sma50?.toFixed(2)}</span>
-              <span>RSI: {result.indicators.rsi14?.toFixed(1)}</span>
-              <span>ATR14: ${result.indicators.atr14?.toFixed(2)}</span>
-              <span>RV(20d): {result.indicators.rv20Daily ? (result.indicators.rv20Daily * 100).toFixed(2) + '%' : 'N/A'}</span>
+              <span className="cursor-help" title="20-day Exponential Moving Average. Price above EMA20 = short-term bullish, below = bearish.">EMA20: ${result.indicators.ema20?.toFixed(2)}</span>
+              <span className="cursor-help" title="50-day Simple Moving Average. Major trend indicator — price above SMA50 = medium-term uptrend.">SMA50: ${result.indicators.sma50?.toFixed(2)}</span>
+              <span className="cursor-help" title="14-day Relative Strength Index (0-100). >70 = overbought, <30 = oversold, 50 = neutral.">RSI: {result.indicators.rsi14?.toFixed(1)}</span>
+              <span className="cursor-help" title="14-day Average True Range. Measures average daily price movement in dollars. Used as a volatility component in the forecast blend.">ATR14: ${result.indicators.atr14?.toFixed(2)}</span>
+              <span className="cursor-help" title="20-day realized volatility (daily sigma). Measures actual historical price movement. Annualized by multiplying by √252.">RV(20d): {result.indicators.rv20Daily ? (result.indicators.rv20Daily * 100).toFixed(2) + '%' : 'N/A'}</span>
             </div>
             <div className="mt-1 text-xs text-dim">
               Generated {new Date(result.generatedAt).toLocaleString()}
@@ -153,18 +153,18 @@ export default function ForecastSection() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {/* IV & RV */}
                   <div>
-                    <div className="text-xs text-dim mb-1">Current IV</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Annualized implied volatility from nearest ATM options expiration. Represents the market's expectation of future volatility.">Current IV</div>
                     <div className="text-lg font-mono font-medium">
                       {vm.currentIVPct != null ? `${vm.currentIVPct.toFixed(1)}%` : 'N/A'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-dim mb-1">RV(20d) Annualized</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="20-day realized volatility annualized (daily sigma × √252). Measures how much the stock has actually moved recently.">RV(20d) Annualized</div>
                     <div className="text-lg font-mono font-medium">{vm.rv20AnnualizedPct.toFixed(1)}%</div>
                   </div>
                   {/* IV/RV Ratio */}
                   <div>
-                    <div className="text-xs text-dim mb-1">IV / RV Ratio</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="IV divided by RV. >1.3x = premium rich (good for selling), <1.0x = premium cheap (options underpriced). Shows how much the market overestimates realized movement.">IV / RV Ratio</div>
                     <div className={`text-lg font-mono font-medium ${vm.ivRvRatio != null && vm.ivRvRatio >= 1.3 ? 'text-green-400' : vm.ivRvRatio != null && vm.ivRvRatio < 1.0 ? 'text-red-400' : ''}`}>
                       {vm.ivRvRatio != null ? `${vm.ivRvRatio.toFixed(2)}x` : 'N/A'}
                     </div>
@@ -176,7 +176,7 @@ export default function ForecastSection() {
                   </div>
                   {/* Regime */}
                   <div>
-                    <div className="text-xs text-dim mb-1">Vol Regime</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Volatility regime based on current RV vs median historical RV. Extreme: >2x median, Elevated: >1.5x, Normal: 0.8-1.5x, Compressed: <0.8x.">Vol Regime</div>
                     <div className={`text-lg font-medium capitalize ${regimeColor}`}>{vm.regime}</div>
                   </div>
                 </div>
@@ -184,7 +184,7 @@ export default function ForecastSection() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                   {/* IV Percentile */}
                   <div>
-                    <div className="text-xs text-dim mb-1">IV Percentile ({vm.rvHistoryDays}d)</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Percentage of historical RV values below current IV. Higher = IV is richer than usual = better for premium selling. ≥75% is attractive.">IV Percentile ({vm.rvHistoryDays}d)</div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
                         <div
@@ -197,7 +197,7 @@ export default function ForecastSection() {
                   </div>
                   {/* IV Rank */}
                   <div>
-                    <div className="text-xs text-dim mb-1">IV Rank ({vm.rvHistoryDays}d)</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Where current IV sits in the historical min-max RV range. 0% = at the lowest, 100% = at the highest. Useful for gauging IV relative to its recent range.">IV Rank ({vm.rvHistoryDays}d)</div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
                         <div
@@ -210,7 +210,7 @@ export default function ForecastSection() {
                   </div>
                   {/* RV Percentile */}
                   <div>
-                    <div className="text-xs text-dim mb-1">RV Percentile ({vm.rvHistoryDays}d)</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Percentage of historical RV values below current RV. Shows whether actual stock movement is high or low compared to recent history.">RV Percentile ({vm.rvHistoryDays}d)</div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
                         <div
@@ -223,7 +223,7 @@ export default function ForecastSection() {
                   </div>
                   {/* Premium Score */}
                   <div>
-                    <div className="text-xs text-dim mb-1">Premium Quality</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Weighted premium quality score (0-100): 45% IV percentile + 35% normalized IV/RV ratio + 20% IV trend. Rich = attractive for selling, Cheap = options underpriced.">Premium Quality</div>
                     {vm.premiumScore != null ? (
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
