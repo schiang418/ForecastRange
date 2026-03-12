@@ -265,6 +265,9 @@ export default function ForecastSection() {
                   {vm.ivPercentileSource === 'rv_approximation' && vm.ivHistoryDays === 0 && (
                     <div className="text-yellow-400/80">IV percentile uses RV approximation (no IV history yet — run backfill or accumulate daily)</div>
                   )}
+                  {result.ivDbError && (
+                    <div className="text-red-400/80">DB error: {result.ivDbError}</div>
+                  )}
                 </div>
               </div>
             );

@@ -60,19 +60,29 @@ router.post('/', async (req, res) => {
     // Auto-backfill IV history if this ticker has < 30 rows.
     // This runs synchronously on first request so the forecast immediately
     // benefits from the synthetic IV history for percentile calculations.
-    try {
-      await autoBackfillIfNeeded(cleanTicker, bars, optionsChain, spot);
-    } catch (err) {
-      console.warn(`[forecast] Auto-backfill failed for ${cleanTicker}: ${err.message}`);
+    let ivDbError = null;
+    if (process.env.DATABASE_URL) {
+      try {
+        await autoBackfillIfNeeded(cleanTicker, bars, optionsChain, spot);
+      } catch (err) {
+        ivDbError = `auto-backfill: ${err.message}`;
+        console.warn(`[forecast] Auto-backfill failed for ${cleanTicker}: ${err.message}`);
+      }
+    } else {
+      ivDbError = 'DATABASE_URL not set — IV history disabled';
+      console.warn(`[forecast] DATABASE_URL not set, skipping IV history for ${cleanTicker}`);
     }
 
     // Fetch IV history from DB for true IV percentile calculation
     let ivHistoryRows = null;
-    try {
-      ivHistoryRows = await getIVHistory(cleanTicker, 252);
-      console.log(`[forecast] ${cleanTicker}: ${ivHistoryRows.length} IV history rows`);
-    } catch (err) {
-      console.warn(`[forecast] IV history fetch failed for ${cleanTicker}: ${err.message}`);
+    if (process.env.DATABASE_URL) {
+      try {
+        ivHistoryRows = await getIVHistory(cleanTicker, 252);
+        console.log(`[forecast] ${cleanTicker}: ${ivHistoryRows.length} IV history rows`);
+      } catch (err) {
+        ivDbError = ivDbError || `iv-history fetch: ${err.message}`;
+        console.warn(`[forecast] IV history fetch failed for ${cleanTicker}: ${err.message}`);
+      }
     }
 
     // Compute forecast
@@ -96,6 +106,9 @@ router.post('/', async (req, res) => {
     }
 
     result.ticker = cleanTicker;
+    if (ivDbError) {
+      result.ivDbError = ivDbError;
+    }
     res.json(result);
   } catch (err) {
     console.error('[forecast] Error:', err);

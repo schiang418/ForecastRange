@@ -163,6 +163,7 @@ export interface ForecastResult {
   volatilityMetrics: VolatilityMetrics;
   horizons: ForecastHorizon[];
   error?: string;
+  ivDbError?: string;
 }
 
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
