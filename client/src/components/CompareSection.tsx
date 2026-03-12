@@ -5,7 +5,7 @@ import { fetchComparison, CompareResult, CompareTickerResult } from '../api';
 function getMedalColor(rank: number): string {
   if (rank === 1) return 'text-yellow-400';
   if (rank === 2) return 'text-gray-300';
-  if (rank === 3) return 'text-amber-600';
+  if (rank === 3) return 'text-orange-400';
   return 'text-dim';
 }
 
