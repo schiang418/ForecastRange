@@ -15,7 +15,7 @@ function formatChartLabel(h: ForecastHorizon): string {
   const [y, m, d] = h.targetDate.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   const mon = date.toLocaleString('en-US', { month: 'short' });
-  return `${mon} ${d}`;
+  return `${mon} ${d} (${h.horizonDays}d)`;
 }
 
 export default function ForecastConeChart({ horizons, spot }: Props) {

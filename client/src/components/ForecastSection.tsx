@@ -143,7 +143,7 @@ export default function ForecastSection() {
                   const [y, m, d] = h.targetDate.split('-').map(Number);
                   const date = new Date(y, m - 1, d);
                   const mon = date.toLocaleString('en-US', { month: 'short' });
-                  label = `${tab}W · ${mon} ${d}`;
+                  label = `Fri ${mon} ${d} (${h.horizonDays}d)`;
                 } else {
                   label = `${tab}W`;
                 }
@@ -200,7 +200,16 @@ export default function ForecastSection() {
           {showDetails && (
             <div className="bg-surface-card border border-edge rounded-lg p-5">
               <h3 className="text-sm font-medium text-dim mb-4">
-                Intermediate Calculations — {activeTab === 'all' ? '1W' : `${activeTab}W`}
+                Intermediate Calculations — {(() => {
+                  const h = activeTab === 'all' ? result.horizons[0] : result.horizons.find(h => h.horizonWeeks === Number(activeTab)) || result.horizons[0];
+                  if (h?.targetDate) {
+                    const [y, m, d] = h.targetDate.split('-').map(Number);
+                    const date = new Date(y, m - 1, d);
+                    const mon = date.toLocaleString('en-US', { month: 'short' });
+                    return `Fri ${mon} ${d}`;
+                  }
+                  return activeTab === 'all' ? '1W' : `${activeTab}W`;
+                })()}
               </h3>
               <ForecastDetails
                 result={result}
