@@ -27,7 +27,7 @@ router.post('/', async (req, res) => {
     const dataBlock = buildSpreadDataBlock(forecast);
 
     const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-5-20241022',
       max_tokens: 2048,
       system: `You are an expert options strategist specializing in credit spreads for premium collection.
 
