@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Search, TrendingUp, Loader2, AlertCircle, BarChart3 } from 'lucide-react';
+import { Search, TrendingUp, Loader2, AlertCircle, BarChart3, Download } from 'lucide-react';
 import { fetchForecast, ForecastResult } from '../api';
 import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
+import { downloadForecastMarkdown } from '../exportMarkdown';
 
 type ViewTab = 'all' | '1' | '2' | '3' | '4';
 
@@ -186,13 +187,20 @@ export default function ForecastSection() {
             <ForecastTable horizons={filteredHorizons} spot={result.spot} />
           </div>
 
-          {/* Calculation Details Toggle */}
-          <div>
+          {/* Calculation Details Toggle + Download */}
+          <div className="flex gap-3">
             <button
               onClick={() => setShowDetails(!showDetails)}
               className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-surface-card text-dim hover:text-white hover:bg-surface-hover border border-edge"
             >
               {showDetails ? 'Hide' : 'Show'} Calculation Details
+            </button>
+            <button
+              onClick={() => downloadForecastMarkdown(result)}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-surface-card text-dim hover:text-white hover:bg-surface-hover border border-edge flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Download Calculations (.md)
             </button>
           </div>
 
