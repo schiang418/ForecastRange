@@ -94,7 +94,6 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
             stroke="none"
             fill="#4f8ff7"
             fillOpacity={0.1}
-            stackId="none"
           />
           <Area
             type="monotone"
@@ -102,7 +101,6 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
             stroke="none"
             fill="#4f8ff7"
             fillOpacity={0.1}
-            stackId="none"
           />
 
           {/* 68% band (medium) */}
@@ -112,7 +110,6 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
             stroke="none"
             fill="#4f8ff7"
             fillOpacity={0.2}
-            stackId="none"
           />
           <Area
             type="monotone"
@@ -120,7 +117,6 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
             stroke="none"
             fill="#4f8ff7"
             fillOpacity={0.2}
-            stackId="none"
           />
 
           {/* 50% band (darkest) */}
@@ -130,7 +126,6 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
             stroke="none"
             fill="#4f8ff7"
             fillOpacity={0.35}
-            stackId="none"
           />
           <Area
             type="monotone"
@@ -138,7 +133,6 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
             stroke="none"
             fill="#4f8ff7"
             fillOpacity={0.35}
-            stackId="none"
           />
 
           {/* Center forecast line */}
