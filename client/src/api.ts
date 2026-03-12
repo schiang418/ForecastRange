@@ -175,6 +175,64 @@ export interface ForecastResult {
   ivDbError?: string;
 }
 
+// --- Compare types ---
+
+export interface CompareTickerResult {
+  ticker: string;
+  rank: number;
+  spot: number;
+  currentIV: number | null;
+  rv20: number | null;
+  ivRvRatio: number | null;
+  volPremium: number | null;
+  ivPercentile: number | null;
+  ivRank: number | null;
+  rvPercentile: number | null;
+  regime: string;
+  premiumScore: number | null;
+  premiumLabel: string | null;
+  ivPercentileSource: string | null;
+  trendScore: number | null;
+  weekMove: number | null;
+  weekConfidence: number | null;
+  weekSkew: string | null;
+  ivAvailable: boolean;
+  straddleAvailable: boolean;
+  compositeScore: number;
+  compositeComponents: {
+    premiumScore: number;
+    ivRvScore: number;
+    ivPctScore: number;
+    regimeScore: number;
+  };
+  verdict: string;
+}
+
+export interface CompareResult {
+  comparison: {
+    tickers: CompareTickerResult[];
+    bestPick: string | null;
+    generatedAt: string;
+  };
+  narrative: string | null;
+  failed?: { ticker: string; error: string }[];
+}
+
+export async function fetchComparison(tickers: string[]): Promise<CompareResult> {
+  const res = await fetch('/api/compare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tickers }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to fetch comparison (${res.status})`);
+  }
+
+  return res.json();
+}
+
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
   const res = await fetch('/api/forecast', {
     method: 'POST',
