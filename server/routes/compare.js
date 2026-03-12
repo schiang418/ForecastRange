@@ -10,7 +10,7 @@ const router = express.Router();
 
 /**
  * POST /api/compare
- * Body: { tickers: string[] }  (max 5)
+ * Body: { tickers: string[] }  (max 10)
  *
  * Runs forecast on each ticker in parallel, then ranks them
  * for premium selling attractiveness.
@@ -22,8 +22,8 @@ router.post('/', async (req, res) => {
     if (!Array.isArray(tickers) || tickers.length < 2) {
       return res.status(400).json({ error: 'At least 2 tickers required' });
     }
-    if (tickers.length > 5) {
-      return res.status(400).json({ error: 'Maximum 5 tickers allowed' });
+    if (tickers.length > 10) {
+      return res.status(400).json({ error: 'Maximum 10 tickers allowed' });
     }
 
     // Sanitize tickers

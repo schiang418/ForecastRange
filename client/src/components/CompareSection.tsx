@@ -118,7 +118,7 @@ export default function CompareSection() {
   const [result, setResult] = useState<CompareResult | null>(null);
 
   const addTicker = () => {
-    if (tickers.length < 5) {
+    if (tickers.length < 10) {
       setTickers([...tickers, '']);
     }
   };
@@ -166,7 +166,7 @@ export default function CompareSection() {
         <Trophy className="w-8 h-8 text-accent" />
         <div>
           <h1 className="text-2xl font-bold">Premium Selling Comparison</h1>
-          <p className="text-dim text-sm">Compare up to 5 tickers for option premium selling attractiveness</p>
+          <p className="text-dim text-sm">Compare up to 10 tickers for option premium selling attractiveness</p>
         </div>
       </div>
 
@@ -203,7 +203,7 @@ export default function CompareSection() {
             </div>
           ))}
 
-          {tickers.length < 5 && (
+          {tickers.length < 10 && (
             <div>
               <label className="block text-xs text-dim mb-1">&nbsp;</label>
               <button
