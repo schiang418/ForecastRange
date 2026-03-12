@@ -32,33 +32,22 @@ function Row({ label, value, dim }: { label: string; value: string | number; dim
   );
 }
 
-function Bar({ label, value, maxValue = 1, color = 'bg-accent' }: { label: string; value: number; maxValue?: number; color?: string }) {
-  const pct = Math.min(Math.abs(value) / maxValue * 100, 100);
-  const isNeg = value < 0;
-  return (
-    <div className="py-1.5">
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-dim">{label}</span>
-        <span className="font-mono">{value > 0 ? '+' : ''}{(value * 100).toFixed(1)}%</span>
-      </div>
-      <div className="h-1.5 bg-surface rounded-full overflow-hidden flex">
-        {isNeg ? (
-          <>
-            <div className="flex-1" />
-            <div className={`${color} rounded-full`} style={{ width: `${pct / 2}%` }} />
-            <div className="flex-1" />
-          </>
-        ) : (
-          <div className={`${color} rounded-full`} style={{ width: `${pct}%` }} />
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function ForecastDetails({ result, selectedHorizon }: Props) {
   const h = selectedHorizon;
   const tb = result.trendBreakdown;
+
+  const blendKeyLabel = (key: string): string => {
+    if (key === 'options') return h.optionsSource === 'straddle' ? 'STRADDLE' : 'IV';
+    return key.toUpperCase();
+  };
+
+  const blendKeyMove = (key: string): number => {
+    if (key === 'options') return (h.optionsSource === 'straddle' ? h.components.straddleMove : h.components.ivMove) ?? 0;
+    if (key === 'atr') return h.components.atrMove;
+    if (key === 'rv') return h.components.rvMove;
+    if (key === 'structure') return h.components.structureMove;
+    return 0;
+  };
 
   return (
     <div className="space-y-3">
@@ -115,10 +104,114 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
             <>
               <Row label="IV raw move" value={`$${h.components.ivMove.toFixed(2)}`} />
               <Row label={`IV formula: spot * IV * sqrt(${h.horizonDays}/252)`} value={`$${result.spot.toFixed(2)} * ${h.ivUsed != null ? (h.ivUsed * 100).toFixed(1) + '%' : 'N/A'} * ${Math.sqrt(h.horizonDays / 252).toFixed(4)}`} dim />
+              {h.ivTermStructure?.interpolated && (
+                <div className="text-xs text-dim ml-4 font-mono">
+                  IV interpolated: {h.ivTermStructure.beforeExp} ({((h.ivTermStructure.beforeIV ?? 0) * 100).toFixed(1)}%)
+                  → {h.ivTermStructure.afterExp} ({((h.ivTermStructure.afterIV ?? 0) * 100).toFixed(1)}%)
+                  at t={h.ivTermStructure.t}
+                </div>
+              )}
+            </>
+          )}
+          {h.components.straddleMove != null && h.straddleInfo && (
+            <>
+              <div className="border-t border-edge/30 pt-2 mt-1" />
+              <Row label="Straddle expected move" value={`$${h.components.straddleMove.toFixed(2)}`} />
+              <div className="text-xs text-dim ml-4 font-mono space-y-0.5">
+                <div>Source: {h.straddleInfo.source}</div>
+                {h.straddleInfo.strike != null && <div>ATM strike: ${h.straddleInfo.strike.toFixed(2)}</div>}
+                {h.straddleInfo.callMid != null && h.straddleInfo.putMid != null && (
+                  <div>Call mid: ${h.straddleInfo.callMid.toFixed(2)} + Put mid: ${h.straddleInfo.putMid.toFixed(2)} = ${h.straddleInfo.straddle?.toFixed(2)}</div>
+                )}
+                <div>Expected move = 0.85 * straddle{h.straddleInfo.scaleFactor != null ? ` * scale(${h.straddleInfo.scaleFactor})` : ''}</div>
+                <div>Expiration: {h.straddleInfo.expiration}</div>
+              </div>
+              {h.optionsSource === 'straddle' && (
+                <div className="text-xs text-green-400 mt-1">
+                  Using straddle (market-implied) instead of IV*sqrt(t) for options component
+                </div>
+              )}
             </>
           )}
         </div>
       </Section>
+
+      {/* S/R Structure */}
+      <Section title={`Support/Resistance — ${h.horizon} (S/R move: $${h.components.structureMove.toFixed(2)})`}>
+        <div className="space-y-2">
+          <Row label="Lookback" value={`${h.structureData.lookbackDays} bars`} />
+          {h.structureData.resistance && (
+            <>
+              <Row label={`Resistance (${h.structureData.resistance.type})`} value={`$${h.structureData.resistance.price.toFixed(2)}`} />
+              <Row label="Distance to resistance" value={`$${h.structureData.distToResistance?.toFixed(2)}`} dim />
+            </>
+          )}
+          {h.structureData.support && (
+            <>
+              <Row label={`Support (${h.structureData.support.type})`} value={`$${h.structureData.support.price.toFixed(2)}`} />
+              <Row label="Distance to support" value={`$${h.structureData.distToSupport?.toFixed(2)}`} dim />
+            </>
+          )}
+          <div className="border-t border-edge/30 pt-1 mt-1">
+            <Row label="Structure move (avg dist)" value={`$${h.components.structureMove.toFixed(2)}`} />
+          </div>
+          {h.structureData.levels.length > 0 && (
+            <div className="mt-2">
+              <div className="text-xs text-dim mb-1">All detected levels:</div>
+              <div className="bg-surface rounded-lg p-2 font-mono text-xs space-y-0.5">
+                {h.structureData.levels.map((l, i) => (
+                  <div key={i} className={l.side === 'resistance' ? 'text-red-300' : 'text-green-300'}>
+                    {l.side === 'resistance' ? '▲' : '▼'} ${l.price.toFixed(2)} ({l.type}{l.date ? `, ${l.date}` : ''})
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* IV Term Structure */}
+      {result.ivTermStructure && result.ivTermStructure.length > 1 && (
+        <Section title={`IV Term Structure (${result.ivTermStructure.length} expirations)`}>
+          <div className="bg-surface rounded-lg p-3 font-mono text-xs space-y-1">
+            {result.ivTermStructure.map((e, i) => (
+              <div key={i} className="flex justify-between">
+                <span className="text-dim">{e.expirationDate}</span>
+                <span>{(e.iv * 100).toFixed(1)}% <span className="text-dim">({e.contractsUsed} contracts)</span></span>
+              </div>
+            ))}
+          </div>
+          {h.ivTermStructure?.interpolated && (
+            <div className="text-xs text-dim mt-2 font-mono">
+              Horizon IV interpolated: t={h.ivTermStructure.t} between {h.ivTermStructure.beforeExp} and {h.ivTermStructure.afterExp}
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* Straddle Term Structure */}
+      {result.straddleTermStructure && result.straddleTermStructure.length > 0 && (
+        <Section title={`Straddle Term Structure (${result.straddleTermStructure.length} expirations)`}>
+          <div className="bg-surface rounded-lg p-3 font-mono text-xs">
+            <div className="grid grid-cols-5 gap-2 text-dim border-b border-edge/30 pb-1 mb-1">
+              <span>Expiration</span>
+              <span className="text-right">Strike</span>
+              <span className="text-right">Call</span>
+              <span className="text-right">Put</span>
+              <span className="text-right">Exp Move</span>
+            </div>
+            {result.straddleTermStructure.map((s, i) => (
+              <div key={i} className="grid grid-cols-5 gap-2 py-0.5">
+                <span className="text-dim">{s.expirationDate}</span>
+                <span className="text-right">${s.strike.toFixed(0)}</span>
+                <span className="text-right">${s.callMid.toFixed(2)}</span>
+                <span className="text-right">${s.putMid.toFixed(2)}</span>
+                <span className="text-right text-accent">${s.expectedMove.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
 
       {/* Blending Formula */}
       <Section title={`Blending Formula — ${h.horizon}`} defaultOpen>
@@ -126,20 +219,18 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
         <div className="space-y-2">
           {Object.entries(h.blending.contributions).map(([key, value]) => {
             const weight = h.blending.weights[key];
-            const rawMove = key === 'iv' ? h.components.ivMove
-              : key === 'atr' ? h.components.atrMove
-              : key === 'rv' ? h.components.rvMove : 0;
+            const rawMove = blendKeyMove(key);
             return (
               <div key={key} className="flex items-center gap-3">
-                <span className="text-xs text-dim w-20 uppercase">{key}</span>
+                <span className="text-xs text-dim w-24 uppercase">{blendKeyLabel(key)}</span>
                 <div className="flex-1 h-2 bg-surface rounded-full overflow-hidden">
                   <div
                     className="h-full bg-accent rounded-full"
-                    style={{ width: `${(value / h.expectedMove) * 100}%` }}
+                    style={{ width: `${h.expectedMove > 0 ? (Math.abs(value) / h.expectedMove) * 100 : 0}%` }}
                   />
                 </div>
-                <span className="text-xs font-mono w-28 text-right">
-                  {(weight * 100).toFixed(0)}% * ${rawMove?.toFixed(2) ?? '0'} = ${value.toFixed(2)}
+                <span className="text-xs font-mono w-32 text-right">
+                  {(weight * 100).toFixed(0)}% * ${rawMove.toFixed(2)} = ${value.toFixed(2)}
                 </span>
               </div>
             );
@@ -186,7 +277,7 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
           {Object.entries(h.confidenceBreakdown).map(([key, comp]) => {
             const labels: Record<string, string> = {
               volAgreement: 'ATR/RV Agreement',
-              ivAgreement: 'IV Agreement',
+              ivAgreement: 'Options Agreement',
               trendClarity: 'Trend Clarity',
             };
             return (
@@ -289,7 +380,7 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
               </div>
               {h.ivAvailable && (
                 <div>
-                  <span className="text-dim">IV Agreement</span> = 1 - |ivMove - avgMove| / max(ivMove, avgMove)
+                  <span className="text-dim">Options Agreement</span> = 1 - |optionsMove - avgMove| / max(optionsMove, avgMove)
                   <div className="ml-4 text-dim">where avgMove = (atrMove + rvMove) / 2</div>
                 </div>
               )}
@@ -301,7 +392,7 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
                 {(() => {
                   const atrMove = h.components.atrMove;
                   const rvMove = h.components.rvMove;
-                  const ivMove = h.components.ivMove;
+                  const optMove = h.optionsSource === 'straddle' ? h.components.straddleMove : h.components.ivMove;
                   const maxVol = Math.max(atrMove, rvMove);
                   const volAgree = maxVol > 0 ? 1 - Math.abs(atrMove - rvMove) / maxVol : 0.5;
                   const trendClarity = Math.abs(result.trendScore);
@@ -312,14 +403,14 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
                         = 1 - {Math.abs(atrMove - rvMove).toFixed(2)} / {maxVol.toFixed(2)}
                         = <span className="text-white">{(volAgree * 100).toFixed(1)}%</span>
                       </div>
-                      {ivMove != null && (() => {
+                      {optMove != null && (() => {
                         const avgMove = (atrMove + rvMove) / 2;
-                        const maxVal = Math.max(ivMove, avgMove);
-                        const ivAgree = maxVal > 0 ? 1 - Math.abs(ivMove - avgMove) / maxVal : 0.5;
+                        const maxVal = Math.max(optMove, avgMove);
+                        const ivAgree = maxVal > 0 ? 1 - Math.abs(optMove - avgMove) / maxVal : 0.5;
                         return (
                           <div>
-                            IV Agr = 1 - |{ivMove.toFixed(2)} - {avgMove.toFixed(2)}| / max({ivMove.toFixed(2)}, {avgMove.toFixed(2)})
-                            = 1 - {Math.abs(ivMove - avgMove).toFixed(2)} / {maxVal.toFixed(2)}
+                            Options = 1 - |{optMove.toFixed(2)} - {avgMove.toFixed(2)}| / max({optMove.toFixed(2)}, {avgMove.toFixed(2)})
+                            = 1 - {Math.abs(optMove - avgMove).toFixed(2)} / {maxVal.toFixed(2)}
                             = <span className="text-white">{(ivAgree * 100).toFixed(1)}%</span>
                           </div>
                         );
@@ -334,48 +425,47 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
             </div>
           </div>
 
-          {/* S/R Term Status */}
+          {/* S/R Structure Formula */}
           <div>
-            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">3. S/R Term Status</h4>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">3. S/R Structure Formula</h4>
             <div className="bg-surface rounded-lg p-3 text-xs">
-              <p className="text-yellow-400 mb-1">S/R contribution is currently hardcoded to 0 (not yet implemented)</p>
-              <p className="text-dim">
-                The blending weights reserve 5-20% for S/R depending on horizon, but the structure move is always 0.
-                The effective blend uses only IV + ATR + RV (or ATR + RV when IV is unavailable).
+              <p className="text-dim mb-2">
+                Structure move = avg(distance to nearest support, distance to nearest resistance).
+                Uses swing highs/lows and recent N-bar extremes as price anchors.
               </p>
-              <div className="font-mono text-dim mt-2 space-y-0.5">
-                <div>1W: 55% IV + 25% ATR + 15% RV + 5% S/R(=0)</div>
-                <div>2W: 50% IV + 25% ATR + 15% RV + 10% S/R(=0)</div>
-                <div>3W: 45% IV + 25% ATR + 15% RV + 15% S/R(=0)</div>
-                <div>4W: 40% IV + 25% ATR + 15% RV + 20% S/R(=0)</div>
+              <div className="font-mono text-dim space-y-0.5">
+                <div>Swing detection: lookback=3 bars (local extrema)</div>
+                <div>Lookback windows: 1W=20, 2W=30, 3W=45, 4W=60 bars</div>
+                <div>structureMove = (distToSupport + distToResistance) / 2</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Straddle Expected Move */}
+          <div>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">4. Straddle Expected Move</h4>
+            <div className="bg-surface rounded-lg p-3 text-xs">
+              <p className="text-dim mb-2">
+                When available, replaces IV*sqrt(t/252) with the market-implied expected move from ATM options straddle pricing.
+              </p>
+              <div className="font-mono text-dim space-y-0.5">
+                <div>straddle = ATM_call_mid + ATM_put_mid</div>
+                <div>expectedMove = 0.85 × straddle</div>
+                <div>Cross-expiration: sqrt-time scaling or linear interpolation</div>
+                <div>Fallback: IV*sqrt(t/252) when straddle unavailable</div>
               </div>
             </div>
           </div>
 
           {/* Confidence Label Thresholds */}
           <div>
-            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">4. Confidence Labels</h4>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">5. Confidence Labels</h4>
             <div className="bg-surface rounded-lg p-3 text-xs font-mono">
               <div className="grid grid-cols-2 gap-1">
                 <span className="text-dim">≥ 75%</span><span className="text-green-400">high</span>
                 <span className="text-dim">≥ 60%</span><span className="text-blue-400">medium-high</span>
                 <span className="text-dim">≥ 45%</span><span className="text-yellow-400">medium</span>
                 <span className="text-dim">&lt; 45%</span><span className="text-red-400">low</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Skew Label Rules */}
-          <div>
-            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">5. Skew Label Rules</h4>
-            <div className="bg-surface rounded-lg p-3 text-xs font-mono">
-              <div className="text-dim mb-1">skewPct = |drift / spot| × 100</div>
-              <div className="grid grid-cols-2 gap-1 mt-1">
-                <span className="text-dim">skewPct &lt; 0.2%</span><span className="text-gray-400">neutral</span>
-                <span className="text-dim">drift &gt; 0, &lt; 0.5%</span><span className="text-green-300">slight bullish</span>
-                <span className="text-dim">drift &gt; 0, ≥ 0.5%</span><span className="text-green-400">bullish</span>
-                <span className="text-dim">drift &lt; 0, &lt; 0.5%</span><span className="text-red-300">slight bearish</span>
-                <span className="text-dim">drift &lt; 0, ≥ 0.5%</span><span className="text-red-400">bearish</span>
               </div>
             </div>
           </div>
@@ -389,6 +479,7 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
                 <span className="text-dim">SIGMA_50</span><span>0.67</span><span className="text-dim">50% band multiplier</span>
                 <span className="text-dim">SIGMA_68</span><span>1.00</span><span className="text-dim">68% band multiplier</span>
                 <span className="text-dim">SIGMA_90</span><span>1.80</span><span className="text-dim">90% band (fat-tail adj from 1.64)</span>
+                <span className="text-dim">Straddle factor</span><span>0.85</span><span className="text-dim">straddle to expected move</span>
                 <span className="text-dim">Days/week</span><span>5</span><span className="text-dim">trading days per week</span>
                 <span className="text-dim">Annualization</span><span>252</span><span className="text-dim">trading days per year (IV)</span>
               </div>

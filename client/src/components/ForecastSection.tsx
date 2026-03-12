@@ -108,8 +108,10 @@ export default function ForecastSection() {
               </div>
               <div className="flex items-center gap-4 text-sm">
                 <span className="text-dim">
-                  IV: {result.ivAvailable ? (
-                    <span className="text-green-400">Available ({result.ivExpirations} expirations)</span>
+                  Options: {result.straddleAvailable ? (
+                    <span className="text-green-400">Straddle ({result.straddleExpirations} exp)</span>
+                  ) : result.ivAvailable ? (
+                    <span className="text-blue-400">IV ({result.ivExpirations} exp)</span>
                   ) : (
                     <span className="text-yellow-400">Unavailable (ATR+RV fallback)</span>
                   )}
