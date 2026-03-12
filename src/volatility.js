@@ -151,12 +151,46 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars, ivHistoryRows = nu
 
   // --- IV history context ---
   let ivHistoryRange = null;
+  let ivDebug = null;
   if (hasIVHistory) {
     const historicalIVs = ivHistoryRows.map(r => r.iv);
     ivHistoryRange = {
       min: round2(Math.min(...historicalIVs) * 100),
       max: round2(Math.max(...historicalIVs) * 100),
       median: round2(median(historicalIVs) * 100),
+    };
+
+    // Build debug diagnostic data
+    const sorted = [...historicalIVs].sort((a, b) => a - b);
+    const p10 = sorted[Math.floor(sorted.length * 0.10)];
+    const p25 = sorted[Math.floor(sorted.length * 0.25)];
+    const p50 = sorted[Math.floor(sorted.length * 0.50)];
+    const p75 = sorted[Math.floor(sorted.length * 0.75)];
+    const p90 = sorted[Math.floor(sorted.length * 0.90)];
+    const belowCount = currentIV != null ? historicalIVs.filter(v => v < currentIV).length : 0;
+
+    ivDebug = {
+      totalRows: ivHistoryRows.length,
+      currentIV: currentIV != null ? round4(currentIV) : null,
+      belowCount,
+      distribution: {
+        p10: round2(p10 * 100),
+        p25: round2(p25 * 100),
+        p50: round2(p50 * 100),
+        p75: round2(p75 * 100),
+        p90: round2(p90 * 100),
+      },
+      // Show 5 most recent IV history entries
+      recentEntries: ivHistoryRows.slice(0, 5).map(r => ({
+        date: r.date,
+        iv: round2(r.iv * 100),
+      })),
+      ivPercentileCalc: currentIV != null
+        ? `${belowCount}/${historicalIVs.length} = ${Math.round((belowCount / historicalIVs.length) * 100)}%`
+        : 'N/A (no current IV)',
+      ivRankCalc: currentIV != null
+        ? `(${round2(currentIV * 100)} - ${round2(Math.min(...historicalIVs) * 100)}) / (${round2(Math.max(...historicalIVs) * 100)} - ${round2(Math.min(...historicalIVs) * 100)}) = ${ivRank}%`
+        : 'N/A',
     };
   }
 
@@ -177,6 +211,7 @@ function computeVolatilityMetrics(currentIV, rv20Daily, bars, ivHistoryRows = nu
     ivPercentileSource,
     ivHistoryDays: hasIVHistory ? ivHistoryRows.length : 0,
     ivHistoryRange,
+    ivDebug,
 
     // RV metrics (always available)
     rvPercentile,
