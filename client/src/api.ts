@@ -115,6 +115,24 @@ export interface TrendBreakdown {
   rsiRegime: TrendComponent;
 }
 
+export interface VolatilityMetrics {
+  currentIV: number | null;
+  currentIVPct: number | null;
+  rv20Annualized: number;
+  rv20AnnualizedPct: number;
+  ivRvRatio: number | null;
+  volPremium: number | null;
+  ivPercentile: number | null;
+  ivRank: number | null;
+  rvPercentile: number | null;
+  rvRank: number | null;
+  regime: string;
+  premiumScore: number | null;
+  premiumLabel: string | null;
+  rvHistoryDays: number;
+  rvHistoryRange: { min: number; max: number; median: number } | null;
+}
+
 export interface ForecastResult {
   ticker: string;
   spot: number;
@@ -139,6 +157,7 @@ export interface ForecastResult {
   };
   ivTermStructure: IVTermStructureEntry[] | null;
   straddleTermStructure: StraddleTermStructureEntry[] | null;
+  volatilityMetrics: VolatilityMetrics;
   horizons: ForecastHorizon[];
   error?: string;
 }
