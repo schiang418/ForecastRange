@@ -10,9 +10,13 @@
  */
 const { computeRollingRV } = require('../src/volatility');
 const { extractAtmIV } = require('../src/polygon');
-const { bulkUpsertIV, getIVHistoryCount } = require('./ivHistory');
+const { bulkUpsertIV, getIVHistoryCount, deleteBackfillData } = require('./ivHistory');
 
 const IV_HISTORY_MIN_DAYS = 30;
+const BACKFILL_MODEL_VERSION = 2;  // bump to force re-backfill with new params
+
+// Track which tickers have been re-backfilled this process lifetime
+const rebackfilledTickers = new Set();
 
 // Track in-flight backfills to avoid duplicate concurrent runs
 const backfillInProgress = new Set();
@@ -31,6 +35,13 @@ async function autoBackfillIfNeeded(ticker, bars, optionsChain, spot) {
   if (backfillInProgress.has(ticker)) return;
 
   try {
+    // One-time re-backfill: delete old synthetic data so new model params take effect
+    if (!rebackfilledTickers.has(ticker)) {
+      rebackfilledTickers.add(ticker);
+      await deleteBackfillData(ticker);
+      console.log(`[auto-backfill] ${ticker}: cleared old synthetic data for model v${BACKFILL_MODEL_VERSION}`);
+    }
+
     const count = await getIVHistoryCount(ticker);
     if (count >= IV_HISTORY_MIN_DAYS) return; // already have enough data
 
@@ -76,9 +87,9 @@ async function autoBackfillIfNeeded(ticker, bars, optionsChain, spot) {
  * Generate synthetic IV rows from RV history using AR(1) IV/RV ratio model.
  */
 function generateSyntheticIV(ticker, rvHistory, targetRatio) {
-  const ratioMean = Math.max(1.1, Math.min(2.5, targetRatio));
-  const alpha = 0.92;
-  const sigma = 0.08;
+  const ratioMean = Math.max(0.9, Math.min(2.5, targetRatio));
+  const alpha = 0.85;   // less persistent → wider distribution
+  const sigma = 0.15;   // more noise → covers broader IV range
 
   // Seeded RNG for reproducibility
   let seed = 0;
@@ -98,7 +109,7 @@ function generateSyntheticIV(ticker, rvHistory, targetRatio) {
 
   for (const rv of rvHistory) {
     ratio = alpha * ratio + (1 - alpha) * ratioMean + sigma * gaussianNoise();
-    ratio = Math.max(0.8, Math.min(3.0, ratio));
+    ratio = Math.max(0.7, Math.min(3.5, ratio));
     const syntheticIV = rv.rvAnnualized * ratio;
 
     rows.push({

@@ -3,7 +3,7 @@ const { fetchDailyBars, fetchOptionsChain, extractAtmIV } = require('../../src/p
 const { computeForecast } = require('../../src/forecast');
 const { upsertIV, getIVHistory } = require('../ivHistory');
 const { autoBackfillIfNeeded } = require('../ivBackfill');
-const { getEasternDate } = require('../db');
+const { getEasternDate, ensureIVHistoryTable } = require('../db');
 
 const router = express.Router();
 
@@ -57,22 +57,41 @@ router.post('/', async (req, res) => {
 
     const spot = bars[bars.length - 1].c;
 
-    // Auto-backfill IV history if this ticker has < 30 rows.
-    // This runs synchronously on first request so the forecast immediately
-    // benefits from the synthetic IV history for percentile calculations.
-    try {
-      await autoBackfillIfNeeded(cleanTicker, bars, optionsChain, spot);
-    } catch (err) {
-      console.warn(`[forecast] Auto-backfill failed for ${cleanTicker}: ${err.message}`);
-    }
-
-    // Fetch IV history from DB for true IV percentile calculation
+    // --- IV history pipeline ---
+    // 1. Ensure table, 2. Store today's live IV, 3. Backfill if needed, 4. Fetch history
+    let ivDbError = null;
     let ivHistoryRows = null;
-    try {
-      ivHistoryRows = await getIVHistory(cleanTicker, 252);
-      console.log(`[forecast] ${cleanTicker}: ${ivHistoryRows.length} IV history rows`);
-    } catch (err) {
-      console.warn(`[forecast] IV history fetch failed for ${cleanTicker}: ${err.message}`);
+
+    if (process.env.DATABASE_URL) {
+      try {
+        await ensureIVHistoryTable();
+
+        // Store today's live IV BEFORE backfill/fetch so it's included in percentile
+        if (optionsChain) {
+          const expirationIVs = extractAtmIV(optionsChain, spot);
+          if (expirationIVs && expirationIVs.length > 0) {
+            const todayIV = expirationIVs[0].iv;
+            const today = getEasternDate();
+            await upsertIV(cleanTicker, today, todayIV, 'live');
+          }
+        }
+
+        await autoBackfillIfNeeded(cleanTicker, bars, optionsChain, spot);
+      } catch (err) {
+        ivDbError = `auto-backfill: ${err.message}`;
+        console.warn(`[forecast] Auto-backfill failed for ${cleanTicker}: ${err.message}`);
+      }
+
+      try {
+        ivHistoryRows = await getIVHistory(cleanTicker, 252);
+        console.log(`[forecast] ${cleanTicker}: ${ivHistoryRows.length} IV history rows`);
+      } catch (err) {
+        ivDbError = ivDbError || `iv-history fetch: ${err.message}`;
+        console.warn(`[forecast] IV history fetch failed for ${cleanTicker}: ${err.message}`);
+      }
+    } else {
+      ivDbError = 'DATABASE_URL not set — IV history disabled';
+      console.warn(`[forecast] DATABASE_URL not set, skipping IV history for ${cleanTicker}`);
     }
 
     // Compute forecast
@@ -82,20 +101,14 @@ router.post('/', async (req, res) => {
       ivHistoryRows,
     });
 
-    // Store today's IV snapshot for future percentile calculations (fire-and-forget)
-    if (result.ivTermStructure && result.ivTermStructure.length > 0) {
-      const todayIV = result.ivTermStructure[0].iv; // nearest-expiration ATM IV
-      const today = getEasternDate();
-      upsertIV(cleanTicker, today, todayIV, 'live').catch(err => {
-        console.warn(`[forecast] IV snapshot store failed for ${cleanTicker}: ${err.message}`);
-      });
-    }
-
     if (result.error) {
       return res.status(400).json({ error: result.error });
     }
 
     result.ticker = cleanTicker;
+    if (ivDbError) {
+      result.ivDbError = ivDbError;
+    }
     res.json(result);
   } catch (err) {
     console.error('[forecast] Error:', err);
