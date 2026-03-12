@@ -176,7 +176,7 @@ export default function ForecastSection() {
                   </div>
                   {/* Regime */}
                   <div>
-                    <div className="text-xs text-dim mb-1 cursor-help" title="Volatility regime based on current RV vs median historical RV. Extreme: >2x median, Elevated: >1.5x, Normal: 0.8-1.5x, Compressed: <0.8x.">Vol Regime</div>
+                    <div className="text-xs text-dim mb-1 cursor-help" title="Volatility regime based on current RV vs median historical RV, adjusted by IV percentile when available. Extreme: RV >2x median, Elevated: >1.5x, Normal: 0.8-1.5x, Compressed: <0.8x. If RV is compressed but IV pctl ≥70%, regime upgrades to Normal (market expects vol expansion).">Vol Regime</div>
                     <div className={`text-lg font-medium capitalize ${regimeColor}`}>{vm.regime}</div>
                   </div>
                 </div>
