@@ -209,6 +209,244 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('   - 90% band: σ = 1.80 (fat-tail adjusted from 1.64)');
   lines.push('');
 
+  // Audit Reference section
+  lines.push('---');
+  lines.push('');
+  lines.push('## Audit Reference');
+  lines.push('');
+  lines.push('This section documents the exact formulas and normalization rules used by the forecast engine,');
+  lines.push('enabling independent verification of every intermediate value.');
+  lines.push('');
+
+  // 1. Trend Score Normalization Rules
+  lines.push('### 1. Trend Score Normalization Rules');
+  lines.push('');
+  lines.push('Each raw indicator value is mapped to [-1, +1] using piecewise linear interpolation (`gradientScore`),');
+  lines.push('clamped at boundary values.');
+  lines.push('');
+  lines.push('```');
+  lines.push('gradientScore(value, breakpoints):');
+  lines.push('  if value <= first breakpoint x → return first breakpoint y');
+  lines.push('  if value >= last breakpoint x  → return last breakpoint y');
+  lines.push('  otherwise: linear interpolation between bracketing breakpoints');
+  lines.push('```');
+  lines.push('');
+  lines.push('| Component | Raw Input | Breakpoints (input → output) | Range |');
+  lines.push('|-----------|-----------|------------------------------|-------|');
+  lines.push('| EMA20 Slope | slope × 100 (%) | [-5% → -1], [0% → 0], [+5% → +1] | [-1, +1] |');
+  lines.push('| EMA50 Slope | slope × 100 (%) | [-3% → -1], [0% → 0], [+3% → +1] | [-1, +1] |');
+  lines.push('| MACD Histogram | (histogram/close) × 100 (%) | [-1% → -1], [0% → 0], [+1% → +1] | [-1, +1] |');
+  lines.push('| RSI Regime | RSI(14) raw value | [20 → -1], [30 → -0.5], [50 → 0], [70 → +0.5], [80 → +1] | [-1, +1] |');
+  lines.push('');
+
+  // Show actual normalization derivations
+  lines.push('**Actual normalization derivations for this forecast:**');
+  lines.push('');
+  lines.push('```');
+  const ema20Raw = tb.ema20Slope.raw;
+  const ema50Raw = tb.ema50Slope.raw;
+  const macdRaw = tb.macdHistogram.raw;
+  const rsiRaw = tb.rsiRegime.raw;
+  if (ema20Raw != null) {
+    lines.push(`EMA20 Slope: raw = ${sign(ema20Raw)}${ema20Raw.toFixed(4)}%`);
+    lines.push(`  breakpoints: [-5→-1, 0→0, 5→+1]`);
+    if (ema20Raw >= 0) {
+      lines.push(`  segment [0→0, 5→+1]: t = ${ema20Raw.toFixed(4)} / 5 = ${(ema20Raw / 5).toFixed(4)}`);
+      lines.push(`  normalized = 0 + ${(ema20Raw / 5).toFixed(4)} × (1 - 0) = ${sign(tb.ema20Slope.normalized)}${tb.ema20Slope.normalized.toFixed(4)}`);
+    } else {
+      lines.push(`  segment [-5→-1, 0→0]: t = (${ema20Raw.toFixed(4)} - (-5)) / 5 = ${((ema20Raw + 5) / 5).toFixed(4)}`);
+      lines.push(`  normalized = -1 + ${((ema20Raw + 5) / 5).toFixed(4)} × (0 - (-1)) = ${sign(tb.ema20Slope.normalized)}${tb.ema20Slope.normalized.toFixed(4)}`);
+    }
+    lines.push('');
+  }
+  if (ema50Raw != null) {
+    lines.push(`EMA50 Slope: raw = ${sign(ema50Raw)}${ema50Raw.toFixed(4)}%`);
+    lines.push(`  breakpoints: [-3→-1, 0→0, 3→+1]`);
+    if (ema50Raw >= 3) {
+      lines.push(`  clamped at +1 (raw >= 3)`);
+    } else if (ema50Raw <= -3) {
+      lines.push(`  clamped at -1 (raw <= -3)`);
+    } else if (ema50Raw >= 0) {
+      lines.push(`  segment [0→0, 3→+1]: t = ${ema50Raw.toFixed(4)} / 3 = ${(ema50Raw / 3).toFixed(4)}`);
+      lines.push(`  normalized = 0 + ${(ema50Raw / 3).toFixed(4)} × 1 = ${sign(tb.ema50Slope.normalized)}${tb.ema50Slope.normalized.toFixed(4)}`);
+    } else {
+      lines.push(`  segment [-3→-1, 0→0]: t = (${ema50Raw.toFixed(4)} + 3) / 3 = ${((ema50Raw + 3) / 3).toFixed(4)}`);
+      lines.push(`  normalized = -1 + ${((ema50Raw + 3) / 3).toFixed(4)} × 1 = ${sign(tb.ema50Slope.normalized)}${tb.ema50Slope.normalized.toFixed(4)}`);
+    }
+    lines.push('');
+  }
+  if (macdRaw != null) {
+    lines.push(`MACD Histogram: raw = ${sign(macdRaw)}${macdRaw.toFixed(4)}%`);
+    lines.push(`  breakpoints: [-1→-1, 0→0, 1→+1]`);
+    if (macdRaw >= 1) {
+      lines.push(`  clamped at +1 (raw >= 1)`);
+    } else if (macdRaw <= -1) {
+      lines.push(`  clamped at -1 (raw <= -1)`);
+    } else if (macdRaw >= 0) {
+      lines.push(`  segment [0→0, 1→+1]: t = ${macdRaw.toFixed(4)}`);
+      lines.push(`  normalized = ${sign(tb.macdHistogram.normalized)}${tb.macdHistogram.normalized.toFixed(4)}`);
+    } else {
+      lines.push(`  segment [-1→-1, 0→0]: t = (${macdRaw.toFixed(4)} + 1) = ${(macdRaw + 1).toFixed(4)}`);
+      lines.push(`  normalized = -1 + ${(macdRaw + 1).toFixed(4)} × 1 = ${sign(tb.macdHistogram.normalized)}${tb.macdHistogram.normalized.toFixed(4)}`);
+    }
+    lines.push('');
+  }
+  if (rsiRaw != null) {
+    lines.push(`RSI Regime: raw = ${rsiRaw.toFixed(2)}`);
+    lines.push(`  breakpoints: [20→-1, 30→-0.5, 50→0, 70→+0.5, 80→+1]`);
+    // Determine segment
+    if (rsiRaw <= 20) {
+      lines.push(`  clamped at -1 (RSI <= 20)`);
+    } else if (rsiRaw >= 80) {
+      lines.push(`  clamped at +1 (RSI >= 80)`);
+    } else if (rsiRaw <= 30) {
+      lines.push(`  segment [20→-1, 30→-0.5]: t = (${rsiRaw.toFixed(2)} - 20) / 10 = ${((rsiRaw - 20) / 10).toFixed(4)}`);
+      lines.push(`  normalized = -1 + ${((rsiRaw - 20) / 10).toFixed(4)} × 0.5 = ${sign(tb.rsiRegime.normalized)}${tb.rsiRegime.normalized.toFixed(4)}`);
+    } else if (rsiRaw <= 50) {
+      lines.push(`  segment [30→-0.5, 50→0]: t = (${rsiRaw.toFixed(2)} - 30) / 20 = ${((rsiRaw - 30) / 20).toFixed(4)}`);
+      lines.push(`  normalized = -0.5 + ${((rsiRaw - 30) / 20).toFixed(4)} × 0.5 = ${sign(tb.rsiRegime.normalized)}${tb.rsiRegime.normalized.toFixed(4)}`);
+    } else if (rsiRaw <= 70) {
+      lines.push(`  segment [50→0, 70→+0.5]: t = (${rsiRaw.toFixed(2)} - 50) / 20 = ${((rsiRaw - 50) / 20).toFixed(4)}`);
+      lines.push(`  normalized = 0 + ${((rsiRaw - 50) / 20).toFixed(4)} × 0.5 = ${sign(tb.rsiRegime.normalized)}${tb.rsiRegime.normalized.toFixed(4)}`);
+    } else {
+      lines.push(`  segment [70→+0.5, 80→+1]: t = (${rsiRaw.toFixed(2)} - 70) / 10 = ${((rsiRaw - 70) / 10).toFixed(4)}`);
+      lines.push(`  normalized = 0.5 + ${((rsiRaw - 70) / 10).toFixed(4)} × 0.5 = ${sign(tb.rsiRegime.normalized)}${tb.rsiRegime.normalized.toFixed(4)}`);
+    }
+    lines.push('');
+  }
+  lines.push('```');
+  lines.push('');
+
+  // 2. Confidence Score Formulas
+  lines.push('### 2. Confidence Score Formulas');
+  lines.push('');
+  lines.push('The confidence score measures agreement between volatility estimators and trend decisiveness.');
+  lines.push('');
+  lines.push('```');
+  lines.push('ATR/RV Agreement = 1 - |atrMove - rvMove| / max(atrMove, rvMove)');
+  lines.push('                 → measures how closely ATR and RV volatility estimates agree');
+  lines.push('                 → range [0, 1] where 1 = perfect agreement');
+  lines.push('');
+  lines.push('IV Agreement     = 1 - |ivMove - avgMove| / max(ivMove, avgMove)');
+  lines.push('                   where avgMove = (atrMove + rvMove) / 2');
+  lines.push('                 → measures how IV aligns with statistical vol estimates');
+  lines.push('                 → range [0, 1] where 1 = IV confirms historical vol');
+  lines.push('');
+  lines.push('Trend Clarity    = |trendScore|');
+  lines.push('                 → measures how decisive the current trend signal is');
+  lines.push('                 → range [0, 1] where 1 = maximum directional conviction');
+  lines.push('```');
+  lines.push('');
+  if (result.ivAvailable) {
+    lines.push('**With IV (3-component weighted average):**');
+    lines.push('`confidence = 0.35 × ATR/RV_Agreement + 0.30 × IV_Agreement + 0.35 × Trend_Clarity`');
+  } else {
+    lines.push('**Without IV (2-component fallback):**');
+    lines.push('`confidence = 0.50 × ATR/RV_Agreement + 0.50 × Trend_Clarity`');
+  }
+  lines.push('');
+
+  // Show per-horizon confidence derivations
+  lines.push('**Actual confidence derivations per horizon:**');
+  lines.push('');
+  for (const h of result.horizons) {
+    const atrMove = h.components.atrMove;
+    const rvMove = h.components.rvMove;
+    const ivMove = h.components.ivMove;
+    const maxVol = Math.max(atrMove, rvMove);
+    const volAgree = maxVol > 0 ? 1 - Math.abs(atrMove - rvMove) / maxVol : 0.5;
+    const label = h.targetDate ? `${fmtDate(h.targetDate)} (${h.horizonDays}d)` : h.horizon;
+    lines.push(`**${label}**`);
+    lines.push('```');
+    lines.push(`ATR/RV Agreement = 1 - |${atrMove.toFixed(2)} - ${rvMove.toFixed(2)}| / max(${atrMove.toFixed(2)}, ${rvMove.toFixed(2)})`);
+    lines.push(`                 = 1 - ${Math.abs(atrMove - rvMove).toFixed(2)} / ${maxVol.toFixed(2)}`);
+    lines.push(`                 = ${(volAgree * 100).toFixed(1)}%`);
+    if (ivMove != null) {
+      const avgMove = (atrMove + rvMove) / 2;
+      const maxVal = Math.max(ivMove, avgMove);
+      const ivAgree = maxVal > 0 ? 1 - Math.abs(ivMove - avgMove) / maxVal : 0.5;
+      lines.push('');
+      lines.push(`IV Agreement     = 1 - |${ivMove.toFixed(2)} - ${avgMove.toFixed(2)}| / max(${ivMove.toFixed(2)}, ${avgMove.toFixed(2)})`);
+      lines.push(`                 = 1 - ${Math.abs(ivMove - avgMove).toFixed(2)} / ${maxVal.toFixed(2)}`);
+      lines.push(`                 = ${(ivAgree * 100).toFixed(1)}%`);
+    }
+    lines.push('');
+    lines.push(`Trend Clarity    = |${sign(result.trendScore)}${result.trendScore.toFixed(4)}| = ${Math.abs(result.trendScore).toFixed(4)} = ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+    lines.push('');
+    if (ivMove != null) {
+      const avgMove = (atrMove + rvMove) / 2;
+      const maxVal = Math.max(ivMove, avgMove);
+      const ivAgree = maxVal > 0 ? 1 - Math.abs(ivMove - avgMove) / maxVal : 0.5;
+      lines.push(`Confidence       = 0.35 × ${(volAgree * 100).toFixed(1)}% + 0.30 × ${(ivAgree * 100).toFixed(1)}% + 0.35 × ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+      lines.push(`                 = ${(0.35 * volAgree * 100).toFixed(1)}% + ${(0.30 * ivAgree * 100).toFixed(1)}% + ${(0.35 * Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+      lines.push(`                 = ${(h.confidence * 100).toFixed(1)}% (${h.confidenceLabel})`);
+    } else {
+      lines.push(`Confidence       = 0.50 × ${(volAgree * 100).toFixed(1)}% + 0.50 × ${(Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+      lines.push(`                 = ${(0.50 * volAgree * 100).toFixed(1)}% + ${(0.50 * Math.abs(result.trendScore) * 100).toFixed(1)}%`);
+      lines.push(`                 = ${(h.confidence * 100).toFixed(1)}% (${h.confidenceLabel})`);
+    }
+    lines.push('```');
+    lines.push('');
+  }
+
+  // 3. Confidence label thresholds
+  lines.push('### 3. Confidence Label Thresholds');
+  lines.push('');
+  lines.push('| Score Range | Label |');
+  lines.push('|-------------|-------|');
+  lines.push('| ≥ 75% | high |');
+  lines.push('| ≥ 60% | medium-high |');
+  lines.push('| ≥ 45% | medium |');
+  lines.push('| < 45% | low |');
+  lines.push('');
+
+  // 4. S/R term status
+  lines.push('### 4. Support/Resistance (S/R) Term');
+  lines.push('');
+  lines.push('The blending formula allocates a weight to a structure term (S/R), but the S/R');
+  lines.push('calculation is **not yet implemented**. The S/R contribution is currently hardcoded to `0`');
+  lines.push('across all horizons. The allocated weight is effectively redistributed to IV/ATR/RV');
+  lines.push('only in the sense that S/R × 0 = 0; the other weights are unchanged.');
+  lines.push('');
+  lines.push('```');
+  lines.push('Blending weights (with IV):');
+  lines.push('  1W: 55% IV + 25% ATR + 15% RV +  5% S/R(=0)');
+  lines.push('  2W: 50% IV + 25% ATR + 15% RV + 10% S/R(=0)');
+  lines.push('  3W: 45% IV + 25% ATR + 15% RV + 15% S/R(=0)');
+  lines.push('  4W: 40% IV + 25% ATR + 15% RV + 20% S/R(=0)');
+  lines.push('');
+  lines.push('Blending weights (without IV fallback):');
+  lines.push('  All: 55% ATR + 45% RV');
+  lines.push('```');
+  lines.push('');
+
+  // 5. Skew label rules
+  lines.push('### 5. Skew Label Rules');
+  lines.push('');
+  lines.push('```');
+  lines.push('skewPct = |drift / spot| × 100');
+  lines.push('');
+  lines.push('if skewPct < 0.2%         → "neutral"');
+  lines.push('if drift > 0 and < 0.5%   → "slight bullish"');
+  lines.push('if drift > 0 and >= 0.5%  → "bullish"');
+  lines.push('if drift < 0 and < 0.5%   → "slight bearish"');
+  lines.push('if drift < 0 and >= 0.5%  → "bearish"');
+  lines.push('```');
+  lines.push('');
+
+  // 6. Constants
+  lines.push('### 6. Model Constants');
+  lines.push('');
+  lines.push('| Constant | Value | Purpose |');
+  lines.push('|----------|-------|---------|');
+  lines.push('| TREND_DRIFT_K | 0.02 | Drift calibration constant |');
+  lines.push('| SIGMA_50 | 0.67 | 50% confidence band multiplier |');
+  lines.push('| SIGMA_68 | 1.00 | 68% confidence band multiplier |');
+  lines.push('| SIGMA_90 | 1.80 | 90% confidence band multiplier (fat-tail adj from 1.64) |');
+  lines.push('| Trading days/week | 5 | Used in sqrt scaling |');
+  lines.push('| Annualization factor | 252 | Trading days per year (for IV) |');
+  lines.push('');
+
   return lines.join('\n');
 }
 

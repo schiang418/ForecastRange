@@ -206,6 +206,196 @@ export default function ForecastDetails({ result, selectedHorizon }: Props) {
           })}
         </div>
       </Section>
+
+      {/* Audit Reference */}
+      <Section title="Audit Reference">
+        <div className="space-y-4">
+          {/* Trend Score Normalization Rules */}
+          <div>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">1. Trend Score Normalization Rules</h4>
+            <p className="text-xs text-dim mb-2">
+              Each raw indicator is mapped to [-1, +1] via piecewise linear interpolation (gradientScore), clamped at boundaries.
+            </p>
+            <div className="bg-surface rounded-lg p-3 font-mono text-xs space-y-2">
+              <div>
+                <span className="text-dim">EMA20 Slope:</span>{' '}
+                <span className="text-yellow-300">[-5% → -1, 0% → 0, +5% → +1]</span>
+                {tb.ema20Slope.raw != null && (
+                  <div className="ml-4 text-dim mt-0.5">
+                    raw={tb.ema20Slope.raw > 0 ? '+' : ''}{tb.ema20Slope.raw.toFixed(4)}% → norm={tb.ema20Slope.normalized > 0 ? '+' : ''}{tb.ema20Slope.normalized.toFixed(4)}
+                    {tb.ema20Slope.raw >= 0
+                      ? ` (segment [0,5]: ${tb.ema20Slope.raw.toFixed(4)}/5 = ${(tb.ema20Slope.raw / 5).toFixed(4)})`
+                      : ` (segment [-5,0]: (${tb.ema20Slope.raw.toFixed(4)}+5)/5 = ${((tb.ema20Slope.raw + 5) / 5).toFixed(4)})`
+                    }
+                  </div>
+                )}
+              </div>
+              <div>
+                <span className="text-dim">EMA50 Slope:</span>{' '}
+                <span className="text-yellow-300">[-3% → -1, 0% → 0, +3% → +1]</span>
+                {tb.ema50Slope.raw != null && (
+                  <div className="ml-4 text-dim mt-0.5">
+                    raw={tb.ema50Slope.raw > 0 ? '+' : ''}{tb.ema50Slope.raw.toFixed(4)}% → norm={tb.ema50Slope.normalized > 0 ? '+' : ''}{tb.ema50Slope.normalized.toFixed(4)}
+                    {tb.ema50Slope.raw >= 3 ? ' (clamped at +1)'
+                      : tb.ema50Slope.raw <= -3 ? ' (clamped at -1)'
+                      : tb.ema50Slope.raw >= 0
+                        ? ` (segment [0,3]: ${tb.ema50Slope.raw.toFixed(4)}/3 = ${(tb.ema50Slope.raw / 3).toFixed(4)})`
+                        : ` (segment [-3,0]: (${tb.ema50Slope.raw.toFixed(4)}+3)/3 = ${((tb.ema50Slope.raw + 3) / 3).toFixed(4)})`
+                    }
+                  </div>
+                )}
+              </div>
+              <div>
+                <span className="text-dim">MACD Histogram:</span>{' '}
+                <span className="text-yellow-300">[-1% → -1, 0% → 0, +1% → +1]</span>
+                {tb.macdHistogram.raw != null && (
+                  <div className="ml-4 text-dim mt-0.5">
+                    raw={tb.macdHistogram.raw > 0 ? '+' : ''}{tb.macdHistogram.raw.toFixed(4)}% → norm={tb.macdHistogram.normalized > 0 ? '+' : ''}{tb.macdHistogram.normalized.toFixed(4)}
+                    {tb.macdHistogram.raw >= 1 ? ' (clamped at +1)'
+                      : tb.macdHistogram.raw <= -1 ? ' (clamped at -1)'
+                      : ` (linear: raw value = normalized)`
+                    }
+                  </div>
+                )}
+              </div>
+              <div>
+                <span className="text-dim">RSI Regime:</span>{' '}
+                <span className="text-yellow-300">[20 → -1, 30 → -0.5, 50 → 0, 70 → +0.5, 80 → +1]</span>
+                {tb.rsiRegime.raw != null && (() => {
+                  const rsi = tb.rsiRegime.raw;
+                  let segmentInfo = '';
+                  if (rsi <= 20) segmentInfo = 'clamped at -1';
+                  else if (rsi >= 80) segmentInfo = 'clamped at +1';
+                  else if (rsi <= 30) segmentInfo = `segment [20,30]: t=(${rsi.toFixed(2)}-20)/10=${((rsi - 20) / 10).toFixed(4)}, score=-1+t×0.5`;
+                  else if (rsi <= 50) segmentInfo = `segment [30,50]: t=(${rsi.toFixed(2)}-30)/20=${((rsi - 30) / 20).toFixed(4)}, score=-0.5+t×0.5`;
+                  else if (rsi <= 70) segmentInfo = `segment [50,70]: t=(${rsi.toFixed(2)}-50)/20=${((rsi - 50) / 20).toFixed(4)}, score=0+t×0.5`;
+                  else segmentInfo = `segment [70,80]: t=(${rsi.toFixed(2)}-70)/10=${((rsi - 70) / 10).toFixed(4)}, score=0.5+t×0.5`;
+                  return (
+                    <div className="ml-4 text-dim mt-0.5">
+                      raw={rsi.toFixed(2)} → norm={tb.rsiRegime.normalized > 0 ? '+' : ''}{tb.rsiRegime.normalized.toFixed(4)} ({segmentInfo})
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* Confidence Score Formulas */}
+          <div>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">2. Confidence Score Formulas</h4>
+            <div className="bg-surface rounded-lg p-3 font-mono text-xs space-y-2">
+              <div>
+                <span className="text-dim">ATR/RV Agreement</span> = 1 - |atrMove - rvMove| / max(atrMove, rvMove)
+              </div>
+              {h.ivAvailable && (
+                <div>
+                  <span className="text-dim">IV Agreement</span> = 1 - |ivMove - avgMove| / max(ivMove, avgMove)
+                  <div className="ml-4 text-dim">where avgMove = (atrMove + rvMove) / 2</div>
+                </div>
+              )}
+              <div>
+                <span className="text-dim">Trend Clarity</span> = |trendScore|
+              </div>
+              <div className="border-t border-edge/30 pt-2 mt-2">
+                <div className="text-dim mb-1">Derivation for {h.horizon}:</div>
+                {(() => {
+                  const atrMove = h.components.atrMove;
+                  const rvMove = h.components.rvMove;
+                  const ivMove = h.components.ivMove;
+                  const maxVol = Math.max(atrMove, rvMove);
+                  const volAgree = maxVol > 0 ? 1 - Math.abs(atrMove - rvMove) / maxVol : 0.5;
+                  const trendClarity = Math.abs(result.trendScore);
+                  return (
+                    <div className="space-y-1">
+                      <div>
+                        ATR/RV = 1 - |{atrMove.toFixed(2)} - {rvMove.toFixed(2)}| / max({atrMove.toFixed(2)}, {rvMove.toFixed(2)})
+                        = 1 - {Math.abs(atrMove - rvMove).toFixed(2)} / {maxVol.toFixed(2)}
+                        = <span className="text-white">{(volAgree * 100).toFixed(1)}%</span>
+                      </div>
+                      {ivMove != null && (() => {
+                        const avgMove = (atrMove + rvMove) / 2;
+                        const maxVal = Math.max(ivMove, avgMove);
+                        const ivAgree = maxVal > 0 ? 1 - Math.abs(ivMove - avgMove) / maxVal : 0.5;
+                        return (
+                          <div>
+                            IV Agr = 1 - |{ivMove.toFixed(2)} - {avgMove.toFixed(2)}| / max({ivMove.toFixed(2)}, {avgMove.toFixed(2)})
+                            = 1 - {Math.abs(ivMove - avgMove).toFixed(2)} / {maxVal.toFixed(2)}
+                            = <span className="text-white">{(ivAgree * 100).toFixed(1)}%</span>
+                          </div>
+                        );
+                      })()}
+                      <div>
+                        Trend  = |{result.trendScore > 0 ? '+' : ''}{result.trendScore.toFixed(4)}| = <span className="text-white">{(trendClarity * 100).toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* S/R Term Status */}
+          <div>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">3. S/R Term Status</h4>
+            <div className="bg-surface rounded-lg p-3 text-xs">
+              <p className="text-yellow-400 mb-1">S/R contribution is currently hardcoded to 0 (not yet implemented)</p>
+              <p className="text-dim">
+                The blending weights reserve 5-20% for S/R depending on horizon, but the structure move is always 0.
+                The effective blend uses only IV + ATR + RV (or ATR + RV when IV is unavailable).
+              </p>
+              <div className="font-mono text-dim mt-2 space-y-0.5">
+                <div>1W: 55% IV + 25% ATR + 15% RV + 5% S/R(=0)</div>
+                <div>2W: 50% IV + 25% ATR + 15% RV + 10% S/R(=0)</div>
+                <div>3W: 45% IV + 25% ATR + 15% RV + 15% S/R(=0)</div>
+                <div>4W: 40% IV + 25% ATR + 15% RV + 20% S/R(=0)</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Confidence Label Thresholds */}
+          <div>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">4. Confidence Labels</h4>
+            <div className="bg-surface rounded-lg p-3 text-xs font-mono">
+              <div className="grid grid-cols-2 gap-1">
+                <span className="text-dim">≥ 75%</span><span className="text-green-400">high</span>
+                <span className="text-dim">≥ 60%</span><span className="text-blue-400">medium-high</span>
+                <span className="text-dim">≥ 45%</span><span className="text-yellow-400">medium</span>
+                <span className="text-dim">&lt; 45%</span><span className="text-red-400">low</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Skew Label Rules */}
+          <div>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">5. Skew Label Rules</h4>
+            <div className="bg-surface rounded-lg p-3 text-xs font-mono">
+              <div className="text-dim mb-1">skewPct = |drift / spot| × 100</div>
+              <div className="grid grid-cols-2 gap-1 mt-1">
+                <span className="text-dim">skewPct &lt; 0.2%</span><span className="text-gray-400">neutral</span>
+                <span className="text-dim">drift &gt; 0, &lt; 0.5%</span><span className="text-green-300">slight bullish</span>
+                <span className="text-dim">drift &gt; 0, ≥ 0.5%</span><span className="text-green-400">bullish</span>
+                <span className="text-dim">drift &lt; 0, &lt; 0.5%</span><span className="text-red-300">slight bearish</span>
+                <span className="text-dim">drift &lt; 0, ≥ 0.5%</span><span className="text-red-400">bearish</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Model Constants */}
+          <div>
+            <h4 className="text-xs font-semibold text-dim uppercase tracking-wide mb-2">6. Model Constants</h4>
+            <div className="bg-surface rounded-lg p-3 text-xs font-mono">
+              <div className="grid grid-cols-[auto_auto_1fr] gap-x-4 gap-y-1">
+                <span className="text-dim">TREND_DRIFT_K</span><span>0.02</span><span className="text-dim">drift calibration</span>
+                <span className="text-dim">SIGMA_50</span><span>0.67</span><span className="text-dim">50% band multiplier</span>
+                <span className="text-dim">SIGMA_68</span><span>1.00</span><span className="text-dim">68% band multiplier</span>
+                <span className="text-dim">SIGMA_90</span><span>1.80</span><span className="text-dim">90% band (fat-tail adj from 1.64)</span>
+                <span className="text-dim">Days/week</span><span>5</span><span className="text-dim">trading days per week</span>
+                <span className="text-dim">Annualization</span><span>252</span><span className="text-dim">trading days per year (IV)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Section>
     </div>
   );
 }
