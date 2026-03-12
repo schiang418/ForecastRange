@@ -11,6 +11,48 @@ const { computeForecastIndicators } = require('./indicators');
 const { extractAtmIV } = require('./polygon');
 const { gradientScore } = require('./scoring');
 
+/**
+ * Compute Friday-aligned horizons.
+ * Returns an array of { weeks, tradingDays, targetDate } for the next 4 Fridays.
+ * If today is already Friday, the first target is NEXT Friday (not today).
+ */
+function computeFridayHorizons(today) {
+  const results = [];
+  // Find the next Friday from today
+  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+  let daysUntilFriday;
+  if (dayOfWeek === 5) {
+    daysUntilFriday = 7; // If Friday, target next Friday
+  } else if (dayOfWeek === 6) {
+    daysUntilFriday = 6; // Saturday -> next Friday
+  } else {
+    daysUntilFriday = 5 - dayOfWeek; // Sun(0)->5, Mon(1)->4, Tue(2)->3, Wed(3)->2, Thu(4)->1
+  }
+  // Sunday is non-trading, so adjust: Sun->5 trading days to Fri, but calendar is 5 days
+  // Trading days = calendar weekdays between today (exclusive) and target Friday (inclusive)
+  for (let i = 0; i < 4; i++) {
+    const calendarDays = daysUntilFriday + i * 7;
+    const targetDate = new Date(today);
+    targetDate.setDate(targetDate.getDate() + calendarDays);
+
+    // Count trading days from today to targetDate (both exclusive of weekends)
+    let tradingDays = 0;
+    const cursor = new Date(today);
+    for (let d = 1; d <= calendarDays; d++) {
+      cursor.setDate(today.getDate() + d);
+      const dow = cursor.getDay();
+      if (dow !== 0 && dow !== 6) tradingDays++;
+    }
+
+    results.push({
+      weeks: i + 1,
+      tradingDays,
+      targetDate: targetDate.toISOString().slice(0, 10),
+    });
+  }
+  return results;
+}
+
 // Blending weights by horizon (weeks) when IV is available
 // [iv_weight, atr_weight, rv_weight, structure_weight]
 const BLEND_WEIGHTS_WITH_IV = {
@@ -212,10 +254,14 @@ function computeForecast(bars, optionsChain = null, options = {}) {
   const trendResult = computeTrendScore(indicators);
   const trendScore = trendResult.score;
 
-  // Compute forecast for each horizon
+  // Compute Friday-aligned horizons
   const today = new Date();
+  const fridayHorizons = computeFridayHorizons(today);
+
   const forecastHorizons = horizons.map(weeks => {
-    const h = weeks * 5; // trading days
+    const fridayInfo = fridayHorizons.find(f => f.weeks === weeks);
+    const h = fridayInfo ? fridayInfo.tradingDays : weeks * 5; // trading days
+    const targetDate = fridayInfo ? fridayInfo.targetDate : null;
 
     // ATR-based move
     const atrMove = atr14 * Math.sqrt(h);
@@ -275,6 +321,7 @@ function computeForecast(bars, optionsChain = null, options = {}) {
       horizon: `${weeks}W`,
       horizonWeeks: weeks,
       horizonDays: h,
+      targetDate,
       center: round2(center),
       expectedMove: round2(blendedMove),
       expectedMovePct: round2(expectedMovePct),
