@@ -29,4 +29,31 @@ function getEasternDate() {
   }).format(new Date());
 }
 
-module.exports = { getDb, getEasternDate };
+/**
+ * Ensure the iv_history table exists in the database.
+ * Uses CREATE TABLE IF NOT EXISTS so it's safe to call on every request.
+ * Cached after first successful run so subsequent calls are no-ops.
+ */
+let tableEnsured = false;
+async function ensureIVHistoryTable() {
+  if (tableEnsured) return;
+  const db = getDb();
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS iv_history (
+       id SERIAL PRIMARY KEY,
+       ticker VARCHAR(20) NOT NULL,
+       date VARCHAR(10) NOT NULL,
+       iv NUMERIC(10,6) NOT NULL,
+       source VARCHAR(20) DEFAULT 'live',
+       created_at TIMESTAMP DEFAULT NOW() NOT NULL
+     )`
+  );
+  // Create the unique index separately (IF NOT EXISTS requires PG 9.5+)
+  await db.execute(
+    `CREATE UNIQUE INDEX IF NOT EXISTS iv_history_ticker_date_idx ON iv_history (ticker, date)`
+  );
+  tableEnsured = true;
+  console.log('[db] iv_history table ensured');
+}
+
+module.exports = { getDb, getEasternDate, ensureIVHistoryTable };

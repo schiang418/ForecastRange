@@ -3,7 +3,7 @@ const { fetchDailyBars, fetchOptionsChain, extractAtmIV } = require('../../src/p
 const { computeForecast } = require('../../src/forecast');
 const { upsertIV, getIVHistory } = require('../ivHistory');
 const { autoBackfillIfNeeded } = require('../ivBackfill');
-const { getEasternDate } = require('../db');
+const { getEasternDate, ensureIVHistoryTable } = require('../db');
 
 const router = express.Router();
 
@@ -63,6 +63,7 @@ router.post('/', async (req, res) => {
     let ivDbError = null;
     if (process.env.DATABASE_URL) {
       try {
+        await ensureIVHistoryTable();
         await autoBackfillIfNeeded(cleanTicker, bars, optionsChain, spot);
       } catch (err) {
         ivDbError = `auto-backfill: ${err.message}`;
