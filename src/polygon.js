@@ -85,9 +85,12 @@ function extractAtmIV(optionsChain, spotPrice) {
   if (!optionsChain || optionsChain.length === 0) return null;
 
   // Filter to contracts with valid IV
+  // Cap IV at 500% (5.0) — Polygon can return absurdly high IV for
+  // near-expiration or illiquid contracts which distorts the average
   const validContracts = optionsChain.filter(c =>
     c.implied_volatility != null &&
     c.implied_volatility > 0 &&
+    c.implied_volatility <= 5.0 &&
     c.details?.strike_price != null
   );
 
@@ -104,13 +107,19 @@ function extractAtmIV(optionsChain, spotPrice) {
   // For each expiration, find ATM contracts (closest to spot)
   const expirationIVs = [];
   for (const [exp, contracts] of Object.entries(byExpiration)) {
+    // Only consider contracts within 20% of spot to avoid deep ITM/OTM skew
+    const nearAtm = contracts.filter(c =>
+      Math.abs(c.details.strike_price - spotPrice) / spotPrice <= 0.20
+    );
+    if (nearAtm.length === 0) continue;
+
     // Sort by distance from spot
-    contracts.sort((a, b) =>
+    nearAtm.sort((a, b) =>
       Math.abs(a.details.strike_price - spotPrice) - Math.abs(b.details.strike_price - spotPrice)
     );
 
     // Take the 2-4 closest contracts and average their IV
-    const atm = contracts.slice(0, 4);
+    const atm = nearAtm.slice(0, 4);
     const avgIV = atm.reduce((sum, c) => sum + c.implied_volatility, 0) / atm.length;
 
     expirationIVs.push({
