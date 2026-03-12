@@ -2,7 +2,16 @@
 
 ## Executive Summary
 
-ForecastRange is a full-stack web application (React + Node.js/Express + PostgreSQL) built for options traders to forecast stock price ranges and evaluate premium-selling opportunities. Converting it to a native iOS app requires decisions on architecture, framework, backend hosting, and phased delivery. This document evaluates the effort, trade-offs, and recommends a phased strategy.
+ForecastRange is a full-stack web application (React + Node.js/Express + PostgreSQL) built for options traders to forecast stock price ranges and evaluate premium-selling opportunities. The web app and database are already deployed on Railway. This document outlines the strategy to build a native iOS app.
+
+### Confirmed Decisions
+
+| Decision | Choice |
+|----------|--------|
+| **Framework** | React Native + Expo (managed workflow) |
+| **Authentication** | OAuth — Sign in with Apple + Google Sign-In |
+| **Monetization** | Free (no subscription or in-app purchases) |
+| **Native Features** | All — Watchlist, Push Notifications, Home Screen Widget, Offline Mode, Biometric Auth |
 
 ---
 
@@ -139,10 +148,10 @@ React Native offers the best balance of development speed, code reuse, and nativ
 
 2. **Thin client** — The iOS app is a presentation layer that calls the existing REST API. This keeps the app lightweight and allows server-side updates without app releases.
 
-3. **Add authentication** — The web app currently has no auth. The iOS app needs user accounts to:
+3. **Add OAuth authentication** — The web app currently has no auth. The iOS app needs user accounts via Sign in with Apple + Google Sign-In to:
    - Protect API access
    - Enable per-user watchlists and saved forecasts
-   - Support subscription billing
+   - Comply with App Store requirements (Apple Sign-In required when offering social login)
 
 4. **Add caching** — Cache recent forecasts on-device to reduce API calls and support offline viewing of last-fetched data.
 
@@ -157,7 +166,7 @@ React Native offers the best balance of development speed, code reuse, and nativ
 | Project setup | React Native + TypeScript + navigation (React Navigation) | 2 days |
 | Backend config | Add iOS API endpoints to existing Railway deployment | 0.5 days |
 | API client | Port `api.ts` to React Native with proper error handling | 1 day |
-| Authentication | Add JWT auth to backend + login/signup screens | 3–4 days |
+| Authentication | OAuth (Apple + Google) + JWT tokens on backend | 3–4 days |
 | Environment config | API keys, base URLs, env management | 0.5 days |
 | CI/CD setup | Fastlane or EAS Build for automated builds | 1–2 days |
 
@@ -253,7 +262,7 @@ React Native offers the best balance of development speed, code reuse, and nativ
 | Icons | Lucide React Native | Lucide React |
 | State | Zustand or React Context | useState hooks |
 | HTTP | Axios or fetch | fetch |
-| Auth | JWT + Secure Storage (expo-secure-store) | None (new) |
+| Auth | OAuth (Apple + Google) + expo-secure-store for JWT | None (new) |
 | Push | Firebase Cloud Messaging (FCM) or APNs | None (new) |
 | Storage | AsyncStorage + MMKV | None (new) |
 | Build | EAS Build (Expo) or Fastlane | Vite |
@@ -265,12 +274,13 @@ React Native offers the best balance of development speed, code reuse, and nativ
 
 The existing Express backend needs these additions to support the iOS app:
 
-### 8.1 Authentication (New)
-- **POST /api/auth/register** — Email/password registration
-- **POST /api/auth/login** — Returns JWT access + refresh tokens
+### 8.1 Authentication — OAuth (New)
+- **POST /api/auth/apple** — Verify Apple identity token, create/find user, return JWT
+- **POST /api/auth/google** — Verify Google OAuth token, create/find user, return JWT
 - **POST /api/auth/refresh** — Refresh expired access tokens
 - **Middleware** — JWT verification on all `/api/forecast`, `/api/compare` routes
-- **User table** — New PostgreSQL table for user accounts
+- **User table** — New PostgreSQL table (`id`, `provider`, `provider_id`, `email`, `name`, `created_at`)
+- **Libraries:** `apple-signin-auth` (server-side Apple token verification), `google-auth-library`
 
 ### 8.2 Watchlist & Preferences (New)
 - **GET /api/watchlist** — Fetch user's saved tickers
@@ -339,7 +349,6 @@ The existing Express backend needs these additions to support the iOS app:
 - **Minimum iOS version** — iOS 16+ (covers ~95% of active devices)
 
 ### Recommended
-- **In-App Purchase / Subscription** — If monetizing (e.g., free tier = 5 forecasts/day, premium = unlimited + AI features)
 - **App Review notes** — Explain the app calculates statistical forecasts, does not execute trades
 - **Demo account** — Provide Apple reviewer with test credentials
 
@@ -349,20 +358,43 @@ The existing Express backend needs these additions to support the iOS app:
 
 ---
 
-## 12. Monetization Options
+## 12. Access Control — Personal Use Only (For Now)
 
-| Model | Description | Considerations |
-|-------|-------------|----------------|
-| Freemium | Free: 3 forecasts/day, no AI. Premium: unlimited + AI + compare | Most common for finance apps |
-| Subscription | $4.99–9.99/month | Covers API costs (Polygon, Claude, hosting) |
-| One-time purchase | $19.99–29.99 | Simpler but doesn't cover ongoing API costs |
-| Ad-supported | Free with ads | Poor UX for finance tools; low revenue |
+**Goal:** Restrict the iOS app to only the owner/developer initially.
 
-**Recommended:** Freemium with monthly subscription ($6.99/month or $49.99/year) gating AI features and unlimited forecasts.
+### Options for Locking Down Access
+
+| Method | How It Works | Effort |
+|--------|-------------|--------|
+| **TestFlight only (Recommended)** | Don't publish to App Store. Distribute via TestFlight to your Apple ID only. No auth needed. | Zero effort |
+| **Allowlist on backend** | After OAuth login, check if the user's email/Apple ID matches an allowlist in the DB or env var. Reject all others. | 1 hour |
+| **Invite code** | Require a secret code on first launch. Only you know the code. | 0.5 days |
+
+**Recommended approach:** Use **TestFlight** during development — it's private by default (up to 100 internal testers). When you're ready for others, add an **email allowlist** on the backend:
+
+```javascript
+// server middleware example
+const ALLOWED_USERS = (process.env.ALLOWED_EMAILS || '').split(',');
+
+function restrictAccess(req, res, next) {
+  if (ALLOWED_USERS.length > 0 && !ALLOWED_USERS.includes(req.user.email)) {
+    return res.status(403).json({ error: 'Access restricted' });
+  }
+  next();
+}
+```
+
+This lets you gradually open access by adding emails to the `ALLOWED_EMAILS` env var on Railway without code changes.
 
 ---
 
-## 13. Alternative: Expo (Managed Workflow)
+## 13. Monetization (N/A — Free)
+
+**Decision: Free** — No subscription or in-app purchases. The app is for personal use. API costs (Polygon, Claude, Railway) are absorbed by the developer. This simplifies development (no StoreKit integration, no paywall logic) and App Store review.
+
+---
+
+## 14. Expo Managed Workflow (Confirmed)
 
 Using **Expo** instead of bare React Native simplifies development significantly:
 
@@ -380,12 +412,14 @@ Using **Expo** instead of bare React Native simplifies development significantly
 
 ---
 
-## 14. Quick-Start Checklist
+## 15. Quick-Start Checklist
 
-- [ ] Choose approach (React Native + Expo recommended)
+- [x] Choose approach — React Native + Expo
+- [x] Choose auth — OAuth (Apple + Google)
+- [x] Choose monetization — Free
+- [x] Choose native features — All (watchlist, push, widget, offline)
 - [ ] Set up Expo project with TypeScript template
-- [ ] Deploy existing backend to cloud provider
-- [ ] Add JWT authentication to backend
+- [ ] Add OAuth endpoints to Railway backend (Apple + Google)
 - [ ] Build Forecast screen with cone chart
 - [ ] Build Compare screen with ranking cards
 - [ ] Integrate AI features (spreads + narrative)
