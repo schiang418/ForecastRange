@@ -1,6 +1,33 @@
 import React, { useState } from 'react';
-import { Search, Loader2, AlertCircle, Download, Trophy, Plus, X } from 'lucide-react';
+import { Search, Loader2, AlertCircle, Download, Trophy, Plus, X, Info } from 'lucide-react';
 import { fetchComparison, CompareResult, CompareTickerResult } from '../api';
+
+// --- Tooltip descriptions ---
+const TOOLTIPS = {
+  composite: 'Weighted ranking score for cross-ticker comparison. 40% Premium Score + 25% IV/RV + 25% IV Percentile + 10% Regime Bonus.',
+  premiumScore: 'Per-ticker premium attractiveness. 45% IV Percentile + 35% IV/RV Normalized + 20% IV Trend. Measures how rich premiums are for this ticker in isolation.',
+  ivRv: 'IV / RV Ratio — how much options overstate actual movement. >1.3x = options overpriced (good for selling). <1.0x = options underpriced (avoid selling).',
+  ivPctl: 'IV Percentile — % of historical IV readings below current IV. Higher = options are historically expensive. ≥60% is favorable for selling.',
+  ivRank: 'IV Rank — where current IV sits between its 1-year min and max (0-100%). Can be skewed by single spikes; use percentile as primary gauge.',
+  regime: 'Volatility regime based on current RV vs. historical median. Compressed = quiet (good for selling), Extreme = crisis (risky).',
+  label: 'Premium quality label. Rich (IV≥75th pctl & IV/RV≥1.3x), Moderately Attractive, Neutral, or Cheap.',
+  iv: 'Implied Volatility — the market\'s expected annualized move, derived from option prices. Higher IV = more expensive options.',
+  rv: 'Realized Volatility (20-day) — how much the stock actually moved recently, annualized.',
+  volPremium: 'Vol Premium = IV − RV in percentage points. Positive means options overestimate risk — your edge as a seller.',
+  weekMove: '1-week expected move as % of spot price, blended from ATR, RV, IV, and straddle components.',
+  skew: 'Directional bias of the forecast — bullish, bearish, or neutral — based on trend indicators.',
+} as const;
+
+function Tip({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex ml-1 cursor-help">
+      <Info className="w-3 h-3 text-dim/50 group-hover:text-accent transition-colors" />
+      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 rounded-lg bg-surface border border-edge px-3 py-2 text-xs text-primary leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+        {text}
+      </span>
+    </span>
+  );
+}
 
 function getMedalColor(rank: number): string {
   if (rank === 1) return 'text-yellow-400';
@@ -285,13 +312,27 @@ export default function CompareSection() {
                   <tr className="border-b border-edge text-dim text-left">
                     <th className="px-4 py-3 font-medium">Rank</th>
                     <th className="px-4 py-3 font-medium">Ticker</th>
-                    <th className="px-4 py-3 font-medium text-right">Composite</th>
-                    <th className="px-4 py-3 font-medium text-right">Premium Score</th>
-                    <th className="px-4 py-3 font-medium text-right">IV/RV</th>
-                    <th className="px-4 py-3 font-medium text-right">IV Pctl</th>
-                    <th className="px-4 py-3 font-medium text-right">IV Rank</th>
-                    <th className="px-4 py-3 font-medium">Regime</th>
-                    <th className="px-4 py-3 font-medium">Label</th>
+                    <th className="px-4 py-3 font-medium text-right">
+                      Composite<Tip text={TOOLTIPS.composite} />
+                    </th>
+                    <th className="px-4 py-3 font-medium text-right">
+                      Premium Score<Tip text={TOOLTIPS.premiumScore} />
+                    </th>
+                    <th className="px-4 py-3 font-medium text-right">
+                      IV/RV<Tip text={TOOLTIPS.ivRv} />
+                    </th>
+                    <th className="px-4 py-3 font-medium text-right">
+                      IV Pctl<Tip text={TOOLTIPS.ivPctl} />
+                    </th>
+                    <th className="px-4 py-3 font-medium text-right">
+                      IV Rank<Tip text={TOOLTIPS.ivRank} />
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      Regime<Tip text={TOOLTIPS.regime} />
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      Label<Tip text={TOOLTIPS.label} />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -378,43 +419,43 @@ function TickerCard({ ticker: t }: { ticker: CompareTickerResult }) {
       {/* Metrics grid */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-3">
         <div className="flex justify-between">
-          <span className="text-dim">IV</span>
+          <span className="text-dim">IV<Tip text={TOOLTIPS.iv} /></span>
           <span className="font-mono">{formatPct(t.currentIV)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">RV₂₀</span>
+          <span className="text-dim">RV₂₀<Tip text={TOOLTIPS.rv} /></span>
           <span className="font-mono">{formatPct(t.rv20)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">IV/RV</span>
+          <span className="text-dim">IV/RV<Tip text={TOOLTIPS.ivRv} /></span>
           <span className="font-mono">{t.ivRvRatio != null ? `${t.ivRvRatio.toFixed(2)}x` : 'N/A'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">Vol Premium</span>
+          <span className="text-dim">Vol Premium<Tip text={TOOLTIPS.volPremium} /></span>
           <span className="font-mono">{t.volPremium != null ? `${t.volPremium.toFixed(1)} pp` : 'N/A'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">IV Pctl</span>
+          <span className="text-dim">IV Pctl<Tip text={TOOLTIPS.ivPctl} /></span>
           <span className="font-mono">{t.ivPercentile != null ? `${t.ivPercentile}%` : 'N/A'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">IV Rank</span>
+          <span className="text-dim">IV Rank<Tip text={TOOLTIPS.ivRank} /></span>
           <span className="font-mono">{t.ivRank != null ? `${t.ivRank}%` : 'N/A'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">Regime</span>
+          <span className="text-dim">Regime<Tip text={TOOLTIPS.regime} /></span>
           <span className={`capitalize ${getRegimeColor(t.regime)}`}>{t.regime}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">Label</span>
+          <span className="text-dim">Label<Tip text={TOOLTIPS.label} /></span>
           <span className={`capitalize ${getLabelColor(t.premiumLabel)}`}>{t.premiumLabel ?? 'N/A'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">1W Move</span>
+          <span className="text-dim">1W Move<Tip text={TOOLTIPS.weekMove} /></span>
           <span className="font-mono">{t.weekMove != null ? `${t.weekMove.toFixed(2)}%` : 'N/A'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-dim">Skew</span>
+          <span className="text-dim">Skew<Tip text={TOOLTIPS.skew} /></span>
           <span className="capitalize">{t.weekSkew ?? 'N/A'}</span>
         </div>
       </div>
@@ -425,22 +466,22 @@ function TickerCard({ ticker: t }: { ticker: CompareTickerResult }) {
           <div
             className="bg-green-500"
             style={{ width: `${t.compositeComponents.premiumScore * 0.4}%` }}
-            title={`Premium: ${t.compositeComponents.premiumScore}`}
+            title={`Premium Score: ${t.compositeComponents.premiumScore}/100 (40% weight)`}
           />
           <div
             className="bg-blue-500"
             style={{ width: `${t.compositeComponents.ivRvScore * 0.25}%` }}
-            title={`IV/RV: ${t.compositeComponents.ivRvScore}`}
+            title={`IV/RV Score: ${t.compositeComponents.ivRvScore}/100 (25% weight)`}
           />
           <div
             className="bg-purple-500"
             style={{ width: `${t.compositeComponents.ivPctScore * 0.25}%` }}
-            title={`IV Pctl: ${t.compositeComponents.ivPctScore}`}
+            title={`IV Percentile: ${t.compositeComponents.ivPctScore}/100 (25% weight)`}
           />
           <div
             className="bg-yellow-500"
             style={{ width: `${t.compositeComponents.regimeScore * 0.1}%` }}
-            title={`Regime: ${t.compositeComponents.regimeScore}`}
+            title={`Regime Bonus: ${t.compositeComponents.regimeScore}/100 (10% weight)`}
           />
         </div>
         <div className="flex gap-3 mt-1 text-xs text-dim">
