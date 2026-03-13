@@ -171,6 +171,7 @@ export interface ForecastResult {
   straddleTermStructure: StraddleTermStructureEntry[] | null;
   volatilityMetrics: VolatilityMetrics;
   horizons: ForecastHorizon[];
+  creditSpreadPricing?: CreditSpreadPricingResult;
   error?: string;
   ivDbError?: string;
 }
@@ -370,25 +371,6 @@ export interface CreditSpreadPricingResult {
   putSpreads: CreditSpreadRow[];
   callSpreads: CreditSpreadRow[];
   spreadWidth: number;
-}
-
-export async function fetchCreditSpreadPricing(forecast: ForecastResult): Promise<CreditSpreadPricingResult> {
-  const res = await fetch('/api/forecast/credit-spread-pricing', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ticker: forecast.ticker,
-      spot: forecast.spot,
-      horizons: forecast.horizons,
-    }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(data.error || `Failed to fetch credit spread pricing (${res.status})`);
-  }
-
-  return res.json();
 }
 
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {

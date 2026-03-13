@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, TrendingUp, Loader2, AlertCircle, BarChart3, Download, Scissors } from 'lucide-react';
-import { fetchForecast, fetchSpreadAnalysis, fetchCreditSpreadPricing, ForecastResult, CreditSpreadPricingResult } from '../api';
+import { fetchForecast, fetchSpreadAnalysis, ForecastResult } from '../api';
 import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
@@ -22,9 +22,6 @@ export default function ForecastSection() {
   const [spreadAnalysis, setSpreadAnalysis] = useState<string | null>(null);
   const [spreadLoading, setSpreadLoading] = useState(false);
   const [spreadError, setSpreadError] = useState<string | null>(null);
-  const [creditSpreadData, setCreditSpreadData] = useState<CreditSpreadPricingResult | null>(null);
-  const [creditSpreadLoading, setCreditSpreadLoading] = useState(false);
-  const [creditSpreadError, setCreditSpreadError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,20 +33,11 @@ export default function ForecastSection() {
     setResult(null);
     setSpreadAnalysis(null);
     setSpreadError(null);
-    setCreditSpreadData(null);
-    setCreditSpreadError(null);
 
     try {
       const data = await fetchForecast(cleanTicker);
       setResult(data);
       setActiveTab('all');
-
-      // Auto-fetch credit spread pricing in background
-      setCreditSpreadLoading(true);
-      fetchCreditSpreadPricing(data)
-        .then(setCreditSpreadData)
-        .catch((err: any) => setCreditSpreadError(err.message || 'Failed to fetch credit spread pricing'))
-        .finally(() => setCreditSpreadLoading(false));
     } catch (err: any) {
       setError(err.message || 'Failed to fetch forecast');
     } finally {
@@ -386,38 +374,26 @@ export default function ForecastSection() {
           </div>
 
           {/* Credit Spread Pricing Tables */}
-          {creditSpreadLoading && (
-            <div className="bg-surface-card border border-edge rounded-lg p-5 flex items-center gap-3">
-              <Loader2 className="w-4 h-4 animate-spin text-accent" />
-              <span className="text-sm text-dim">Loading credit spread pricing...</span>
-            </div>
-          )}
-          {creditSpreadError && (
-            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span className="text-red-300 text-xs">{creditSpreadError}</span>
-            </div>
-          )}
-          {creditSpreadData && (
+          {result.creditSpreadPricing && (
             <>
               <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
                 <CreditSpreadTable
                   rows={activeTab === 'all'
-                    ? creditSpreadData.putSpreads
-                    : creditSpreadData.putSpreads.filter(r => r.horizonWeeks === Number(activeTab))
+                    ? result.creditSpreadPricing.putSpreads
+                    : result.creditSpreadPricing.putSpreads.filter(r => r.horizonWeeks === Number(activeTab))
                   }
                   type="put"
-                  spreadWidth={creditSpreadData.spreadWidth}
+                  spreadWidth={result.creditSpreadPricing.spreadWidth}
                 />
               </div>
               <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
                 <CreditSpreadTable
                   rows={activeTab === 'all'
-                    ? creditSpreadData.callSpreads
-                    : creditSpreadData.callSpreads.filter(r => r.horizonWeeks === Number(activeTab))
+                    ? result.creditSpreadPricing.callSpreads
+                    : result.creditSpreadPricing.callSpreads.filter(r => r.horizonWeeks === Number(activeTab))
                   }
                   type="call"
-                  spreadWidth={creditSpreadData.spreadWidth}
+                  spreadWidth={result.creditSpreadPricing.spreadWidth}
                 />
               </div>
             </>
