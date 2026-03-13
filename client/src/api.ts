@@ -171,6 +171,7 @@ export interface ForecastResult {
   straddleTermStructure: StraddleTermStructureEntry[] | null;
   volatilityMetrics: VolatilityMetrics;
   horizons: ForecastHorizon[];
+  creditSpreadPricing?: CreditSpreadPricingResult;
   error?: string;
   ivDbError?: string;
 }
@@ -263,6 +264,128 @@ export async function fetchSpreadAnalysis(forecast: ForecastResult): Promise<str
 
   const data = await res.json();
   return data.analysis;
+}
+
+// --- Chart types ---
+
+export interface ChartBar {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  sma20: number | null;
+  sma50: number | null;
+  sma200: number | null;
+  bbUpper: number | null;
+  bbMiddle: number | null;
+  bbLower: number | null;
+  rsi14: number | null;
+}
+
+export type ChartPeriod = '3m' | '6m' | '1y' | '2y';
+
+export interface ChartResult {
+  ticker: string;
+  period: string;
+  bars: ChartBar[];
+}
+
+export async function fetchChart(ticker: string, period: ChartPeriod = '6m'): Promise<ChartResult> {
+  const res = await fetch('/api/chart', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker, period }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to fetch chart data (${res.status})`);
+  }
+
+  return res.json();
+}
+
+// --- Events types ---
+
+export interface UpcomingEvent {
+  type: 'fomc' | 'dividend' | 'split' | 'earnings';
+  date: string;
+  label: string;
+  description?: string;
+}
+
+export interface EventsResult {
+  ticker: string;
+  events: UpcomingEvent[];
+  fromDate: string;
+  toDate: string;
+}
+
+export async function fetchEvents(ticker: string): Promise<EventsResult> {
+  const res = await fetch('/api/events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to fetch events (${res.status})`);
+  }
+
+  return res.json();
+}
+
+// --- Credit Spread Pricing types ---
+
+export interface CreditSpreadCell {
+  sellStrike: number;
+  buyStrike: number;
+  sellMid: number;
+  buyMid: number;
+  premium: number;
+  premiumPerContract: number;  // in dollars (premium * 100)
+  maxLoss: number;
+  sellIV: number | null;
+  buyIV: number | null;
+  adjusted?: boolean;  // true if strikes were adjusted from ideal
+}
+
+export interface CreditSpreadRow {
+  horizon: string;
+  horizonWeeks: number;
+  horizonDays: number;
+  targetDate: string | null;
+  expectedMove: number;
+  expectedMovePct: number;
+  ranges: {
+    range50?: CreditSpreadCell | null;
+    range68?: CreditSpreadCell | null;
+    range90?: CreditSpreadCell | null;
+  };
+}
+
+export interface CreditSpreadPricingResult {
+  putSpreads: CreditSpreadRow[];
+  callSpreads: CreditSpreadRow[];
+  spreadWidth: number;
+}
+
+export async function fetchCreditSpreads(ticker: string, horizons: ForecastHorizon[], spot: number): Promise<CreditSpreadPricingResult> {
+  const res = await fetch('/api/forecast/credit-spreads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker, horizons, spot }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to fetch credit spreads (${res.status})`);
+  }
+
+  return res.json();
 }
 
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
