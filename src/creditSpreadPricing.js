@@ -79,10 +79,17 @@ async function computeCreditSpreadPricing(optionsChain, horizons, spot, ticker, 
         priceCache[cacheKey] = snap;
         return snap;
       }
+      // Log first few failures for debugging
+      if (_debug.fetchedPrices <= 3) {
+        _debug[`fetch_${cacheKey}`] = { optionTicker, snap };
+      }
       priceCache[cacheKey] = null;
       return null;
     } catch (err) {
       _debug.fetchErrors++;
+      if (_debug.fetchErrors <= 3) {
+        _debug[`fetchErr_${_debug.fetchErrors}`] = { optionTicker, error: err.message };
+      }
       priceCache[cacheKey] = null;
       return null;
     }

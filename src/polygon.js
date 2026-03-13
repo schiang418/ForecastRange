@@ -389,16 +389,20 @@ function buildOptionTicker(underlying, expirationDate, putCall, strike) {
  */
 async function getOptionSnapshot(underlying, optionTicker) {
   const apiKey = getApiKey();
-  const url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(underlying)}/${encodeURIComponent(optionTicker)}?apiKey=${apiKey}`;
+  // Do NOT encodeURIComponent the optionTicker — Polygon expects literal "O:TSLA..." in the path
+  const url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(underlying)}/${optionTicker}?apiKey=${apiKey}`;
 
   const res = await fetch(url);
   if (!res.ok) {
-    if (res.status === 404 || res.status === 403) return null;
+    console.warn(`[polygon] getOptionSnapshot ${optionTicker}: HTTP ${res.status}`);
     return null;
   }
 
   const data = await res.json();
-  if (!data.results) return null;
+  if (!data.results) {
+    console.warn(`[polygon] getOptionSnapshot ${optionTicker}: no results in response`);
+    return null;
+  }
 
   const result = data.results;
   const quote = result.last_quote || {};
