@@ -20,14 +20,13 @@ function SpreadCell({ cell, type }: { cell: CreditSpreadCell | null | undefined;
     return <span className="text-dim text-xs">N/A</span>;
   }
 
-  const sellLabel = type === 'put' ? 'Sell P' : 'Sell C';
-  const buyLabel = type === 'put' ? 'Buy P' : 'Buy C';
+  const sellLabel = type === 'put' ? 'P' : 'C';
   const premiumColor = cell.premium > 0 ? 'text-green-400' : 'text-dim';
 
   return (
     <div className="flex flex-col items-end gap-0.5">
-      <div className="text-xs text-dim">
-        {sellLabel} ${cell.sellStrike} / {buyLabel} ${cell.buyStrike}
+      <div className="text-xs text-dim whitespace-nowrap">
+        {cell.sellStrike}/{cell.buyStrike} {sellLabel}
       </div>
       <div className={`font-mono font-medium ${premiumColor}`}>
         ${cell.premium.toFixed(2)}
@@ -49,14 +48,7 @@ export default function CreditSpreadTable({ rows, type, spreadWidth }: Props) {
         <h3 className="text-sm font-semibold text-accent">{title}</h3>
         <p className="text-xs text-dim mt-0.5">{subtitle}</p>
       </div>
-      <table className="w-full text-sm table-fixed">
-        <colgroup>
-          <col style={{ width: '15%' }} />
-          <col style={{ width: '17%' }} />
-          <col style={{ width: '22.67%' }} />
-          <col style={{ width: '22.67%' }} />
-          <col style={{ width: '22.67%' }} />
-        </colgroup>
+      <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-edge text-dim text-left">
             <th className="py-3 px-4 font-medium">Horizon</th>
