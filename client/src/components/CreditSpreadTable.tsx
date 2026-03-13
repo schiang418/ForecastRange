@@ -30,8 +30,7 @@ function SpreadCell({ cell, type }: { cell: CreditSpreadCell | null | undefined;
         {sellLabel} ${cell.sellStrike} / {buyLabel} ${cell.buyStrike}
       </div>
       <div className={`font-mono font-medium ${premiumColor}`}>
-        ${cell.premium.toFixed(2)}
-        <span className="text-xs text-dim ml-1">(${cell.premiumPerContract})</span>
+        ${cell.premiumPerContract}
       </div>
     </div>
   );
