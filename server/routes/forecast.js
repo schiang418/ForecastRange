@@ -1,5 +1,5 @@
 const express = require('express');
-const { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV } = require('../../src/polygon');
+const { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV, getOptionSnapshot, buildOptionTicker } = require('../../src/polygon');
 const { computeForecast } = require('../../src/forecast');
 const { upsertIV, getIVHistory } = require('../ivHistory');
 const { autoBackfillIfNeeded } = require('../ivBackfill');
@@ -125,7 +125,9 @@ router.post('/', async (req, res) => {
         console.log(`[forecast] ${cleanTicker}: ${chainToUse.length} total option contracts for credit spreads`);
 
         if (chainToUse.length > 0) {
-          result.creditSpreadPricing = computeCreditSpreadPricing(chainToUse, result.horizons, spot);
+          result.creditSpreadPricing = await computeCreditSpreadPricing(
+            chainToUse, result.horizons, spot, cleanTicker, getOptionSnapshot, buildOptionTicker
+          );
           console.log(`[forecast] ${cleanTicker}: credit spread pricing computed`);
         }
       } catch (err) {

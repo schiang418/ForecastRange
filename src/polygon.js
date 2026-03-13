@@ -369,4 +369,53 @@ function roundToStrike(price, direction = 'down') {
   }
 }
 
-module.exports = { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV, extractAtmStraddle, fetchDividends, fetchSplits, findContractPrice, roundToStrike, sleep };
+/**
+ * Build a Polygon-style OCC option ticker.
+ * e.g. buildOptionTicker("TSLA", "2026-03-20", "P", 372.5) → "O:TSLA260320P00372500"
+ */
+function buildOptionTicker(underlying, expirationDate, putCall, strike) {
+  const datePart = expirationDate.replace(/-/g, '').slice(2);
+  const strikePart = Math.round(strike * 1000).toString().padStart(8, '0');
+  return `O:${underlying}${datePart}${putCall}${strikePart}`;
+}
+
+/**
+ * Fetch a single option contract snapshot from Polygon.
+ * Uses the individual contract endpoint which returns full quote/trade data.
+ *
+ * @param {string} underlying - e.g. "TSLA"
+ * @param {string} optionTicker - e.g. "O:TSLA260320P00372500"
+ * @returns {{ bid, ask, midpoint, lastTrade, iv } | null}
+ */
+async function getOptionSnapshot(underlying, optionTicker) {
+  const apiKey = getApiKey();
+  const url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(underlying)}/${encodeURIComponent(optionTicker)}?apiKey=${apiKey}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    if (res.status === 404 || res.status === 403) return null;
+    return null;
+  }
+
+  const data = await res.json();
+  if (!data.results) return null;
+
+  const result = data.results;
+  const quote = result.last_quote || {};
+  const trade = result.last_trade || {};
+
+  const bid = quote.bid || 0;
+  const ask = quote.ask || 0;
+  const midpoint = bid && ask ? (bid + ask) / 2 : trade.price || 0;
+
+  return {
+    bid,
+    ask,
+    midpoint,
+    lastTrade: trade.price || 0,
+    fmv: result.fair_market_value || 0,
+    iv: result.implied_volatility || null,
+  };
+}
+
+module.exports = { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV, extractAtmStraddle, fetchDividends, fetchSplits, findContractPrice, roundToStrike, sleep, buildOptionTicker, getOptionSnapshot };
