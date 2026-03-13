@@ -1,8 +1,4 @@
-import { useState, useEffect } from 'react';
-import {
-  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Customized,
-} from 'recharts';
+import { useState, useEffect, useCallback } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { fetchChart, ChartBar, ChartPeriod } from '../api';
 
@@ -17,7 +13,7 @@ const PERIODS: { value: ChartPeriod; label: string }[] = [
   { value: '2y', label: '2Y' },
 ];
 
-function formatDate(dateStr: string): string {
+function formatDateShort(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -29,29 +25,50 @@ function formatDateFull(dateStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+interface ChartDimensions {
+  width: number;
+  height: number;
+  marginTop: number;
+  marginRight: number;
+  marginBottom: number;
+  marginLeft: number;
+  plotWidth: number;
+  plotHeight: number;
+}
+
+/**
+ * Pure SVG candlestick chart with Bollinger Bands and SMAs.
+ * Using raw SVG instead of Recharts for proper candlestick rendering.
+ */
 export default function PriceHistoryChart({ ticker }: Props) {
   const [period, setPeriod] = useState<ChartPeriod>('6m');
   const [bars, setBars] = useState<ChartBar[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!ticker) return;
-
     let cancelled = false;
     setLoading(true);
     setError(null);
 
     fetchChart(ticker, period)
-      .then((data) => {
-        if (!cancelled) setBars(data.bars);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .then((data) => { if (!cancelled) setBars(data.bars); })
+      .catch((err) => { if (!cancelled) setError(err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
   }, [ticker, period]);
@@ -80,20 +97,21 @@ export default function PriceHistoryChart({ ticker }: Props) {
 
   if (bars.length === 0) return null;
 
-  // Prepare chart data - use close prices as the main line
-  // For the BB band fill, we need the range
-  const chartData = bars.map((bar) => ({
-    ...bar,
-    dateLabel: formatDate(bar.date),
-    dateFull: formatDateFull(bar.date),
-    // For candlestick coloring
-    isUp: bar.close >= bar.open,
-    // BB band range for area fill
-    bbRange: bar.bbUpper != null && bar.bbLower != null ? [bar.bbLower, bar.bbUpper] : undefined,
-  }));
+  // Chart dimensions
+  const svgHeight = 420;
+  const dim: ChartDimensions = {
+    width: containerWidth || 800,
+    height: svgHeight,
+    marginTop: 15,
+    marginRight: 15,
+    marginBottom: 30,
+    marginLeft: 65,
+    get plotWidth() { return this.width - this.marginLeft - this.marginRight; },
+    get plotHeight() { return this.height - this.marginTop - this.marginBottom; },
+  };
 
-  // Calculate Y domain from all price data + BB bands
-  const allValues = chartData.flatMap((d) => {
+  // Y domain
+  const allValues = bars.flatMap((d) => {
     const vals = [d.high, d.low];
     if (d.bbUpper != null) vals.push(d.bbUpper);
     if (d.bbLower != null) vals.push(d.bbLower);
@@ -101,12 +119,70 @@ export default function PriceHistoryChart({ ticker }: Props) {
   });
   const dataMin = Math.min(...allValues);
   const dataMax = Math.max(...allValues);
-  const padding = (dataMax - dataMin) * 0.03;
-  const yMin = Math.floor((dataMin - padding) * 100) / 100;
-  const yMax = Math.ceil((dataMax + padding) * 100) / 100;
+  const yPadding = (dataMax - dataMin) * 0.04;
+  const yMin = dataMin - yPadding;
+  const yMax = dataMax + yPadding;
 
-  // Determine tick interval based on period
-  const tickInterval = period === '3m' ? 5 : period === '6m' ? 10 : period === '1y' ? 20 : 40;
+  // Scale functions
+  const barWidth = dim.plotWidth / bars.length;
+  const candleWidth = Math.max(2, Math.min(12, barWidth * 0.7));
+  const xScale = (i: number) => dim.marginLeft + i * barWidth + barWidth / 2;
+  const yScale = (v: number) => dim.marginTop + dim.plotHeight * (1 - (v - yMin) / (yMax - yMin));
+
+  // Y-axis ticks
+  const yRange = yMax - yMin;
+  const rawStep = yRange / 8;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const normalized = rawStep / magnitude;
+  const niceStep = normalized <= 1 ? magnitude
+    : normalized <= 2 ? 2 * magnitude
+    : normalized <= 5 ? 5 * magnitude
+    : 10 * magnitude;
+  const yTicks: number[] = [];
+  const firstTick = Math.ceil(yMin / niceStep) * niceStep;
+  for (let t = firstTick; t <= yMax; t += niceStep) {
+    yTicks.push(t);
+  }
+
+  // X-axis ticks (show every Nth date label)
+  const xTickEvery = bars.length <= 65 ? 5 : bars.length <= 130 ? 10 : bars.length <= 260 ? 20 : 40;
+
+  // Build line paths for BB and SMA
+  function buildLinePath(accessor: (b: ChartBar) => number | null): string {
+    let path = '';
+    bars.forEach((b, i) => {
+      const v = accessor(b);
+      if (v == null) return;
+      const x = xScale(i);
+      const y = yScale(v);
+      path += path === '' ? `M${x},${y}` : `L${x},${y}`;
+    });
+    return path;
+  }
+
+  // BB fill path (area between upper and lower)
+  function buildBBFillPath(): string {
+    const upperPoints: string[] = [];
+    const lowerPoints: string[] = [];
+    bars.forEach((b, i) => {
+      if (b.bbUpper == null || b.bbLower == null) return;
+      const x = xScale(i);
+      upperPoints.push(`${x},${yScale(b.bbUpper)}`);
+      lowerPoints.push(`${x},${yScale(b.bbLower)}`);
+    });
+    if (upperPoints.length === 0) return '';
+    return `M${upperPoints.join('L')}L${lowerPoints.reverse().join('L')}Z`;
+  }
+
+  const bbFillPath = buildBBFillPath();
+  const bbUpperPath = buildLinePath((b) => b.bbUpper);
+  const bbMiddlePath = buildLinePath((b) => b.bbMiddle);
+  const bbLowerPath = buildLinePath((b) => b.bbLower);
+  const sma20Path = buildLinePath((b) => b.sma20);
+  const sma50Path = buildLinePath((b) => b.sma50);
+
+  // Hovered bar data
+  const hoveredBar = hoverIndex != null ? bars[hoverIndex] : null;
 
   return (
     <div className="bg-surface-card border border-edge rounded-lg p-5">
@@ -129,229 +205,211 @@ export default function PriceHistoryChart({ ticker }: Props) {
         </div>
       </div>
 
-      <div className="w-full h-96">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2e3a" />
-            <XAxis
-              dataKey="dateLabel"
-              stroke="#8b8fa3"
-              tick={{ fill: '#8b8fa3', fontSize: 11 }}
-              interval={tickInterval}
-              tickLine={false}
-            />
-            <YAxis
-              domain={[yMin, yMax]}
-              stroke="#8b8fa3"
-              tick={{ fill: '#8b8fa3', fontSize: 11 }}
-              tickFormatter={(v: number) => `$${v.toFixed(0)}`}
-              width={60}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#1a1d27',
-                border: '1px solid #2a2e3a',
-                borderRadius: '8px',
-                color: '#e1e4ea',
-                fontSize: '12px',
-              }}
-              content={({ active, payload }) => {
-                if (!active || !payload || payload.length === 0) return null;
-                const d = payload[0]?.payload;
-                if (!d) return null;
-                const isUp = d.close >= d.open;
-                const changeColor = isUp ? '#22c55e' : '#ef4444';
-                const change = d.close - d.open;
-                const changePct = ((change / d.open) * 100).toFixed(2);
-                return (
-                  <div className="bg-[#1a1d27] border border-[#2a2e3a] rounded-lg p-3 text-xs">
-                    <div className="font-medium text-white mb-2">{d.dateFull}</div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                      <span className="text-dim">Open</span>
-                      <span className="text-right font-mono">${d.open.toFixed(2)}</span>
-                      <span className="text-dim">High</span>
-                      <span className="text-right font-mono">${d.high.toFixed(2)}</span>
-                      <span className="text-dim">Low</span>
-                      <span className="text-right font-mono">${d.low.toFixed(2)}</span>
-                      <span className="text-dim">Close</span>
-                      <span className="text-right font-mono" style={{ color: changeColor }}>
-                        ${d.close.toFixed(2)} ({change >= 0 ? '+' : ''}{changePct}%)
-                      </span>
-                    </div>
-                    {(d.sma20 != null || d.sma50 != null) && (
-                      <div className="mt-2 pt-2 border-t border-[#2a2e3a] grid grid-cols-2 gap-x-4 gap-y-1">
-                        {d.sma20 != null && (
-                          <>
-                            <span className="text-[#f59e0b]">SMA 20</span>
-                            <span className="text-right font-mono">${d.sma20.toFixed(2)}</span>
-                          </>
-                        )}
-                        {d.sma50 != null && (
-                          <>
-                            <span className="text-[#a855f7]">SMA 50</span>
-                            <span className="text-right font-mono">${d.sma50.toFixed(2)}</span>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    {d.bbUpper != null && (
-                      <div className="mt-2 pt-2 border-t border-[#2a2e3a] grid grid-cols-2 gap-x-4 gap-y-1">
-                        <span className="text-[#4f8ff7]">BB Upper</span>
-                        <span className="text-right font-mono">${d.bbUpper.toFixed(2)}</span>
-                        <span className="text-[#4f8ff7]">BB Middle</span>
-                        <span className="text-right font-mono">${d.bbMiddle.toFixed(2)}</span>
-                        <span className="text-[#4f8ff7]">BB Lower</span>
-                        <span className="text-right font-mono">${d.bbLower.toFixed(2)}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              }}
-            />
+      <div ref={containerRef} className="w-full relative" style={{ height: svgHeight }}>
+        {containerWidth > 0 && (
+          <svg
+            width={dim.width}
+            height={dim.height}
+            className="select-none"
+            onMouseLeave={() => setHoverIndex(null)}
+          >
+            {/* Grid lines */}
+            {yTicks.map((t) => (
+              <line
+                key={t}
+                x1={dim.marginLeft}
+                y1={yScale(t)}
+                x2={dim.width - dim.marginRight}
+                y2={yScale(t)}
+                stroke="#2a2e3a"
+                strokeDasharray="3 3"
+              />
+            ))}
 
-            {/* Bollinger Band fill (shaded area between upper and lower) */}
-            <Area
-              type="monotone"
-              dataKey="bbUpper"
-              stroke="none"
-              fill="#4f8ff7"
-              fillOpacity={0.08}
-              isAnimationActive={false}
-            />
-            <Area
-              type="monotone"
-              dataKey="bbLower"
-              stroke="none"
-              fill="#1a1d27"
-              fillOpacity={1}
-              isAnimationActive={false}
-            />
+            {/* Y-axis labels */}
+            {yTicks.map((t) => (
+              <text
+                key={t}
+                x={dim.marginLeft - 8}
+                y={yScale(t)}
+                fill="#8b8fa3"
+                fontSize={11}
+                textAnchor="end"
+                dominantBaseline="middle"
+              >
+                ${t.toFixed(0)}
+              </text>
+            ))}
+
+            {/* X-axis labels */}
+            {bars.map((b, i) => {
+              if (i % xTickEvery !== 0) return null;
+              return (
+                <text
+                  key={i}
+                  x={xScale(i)}
+                  y={dim.height - 8}
+                  fill="#8b8fa3"
+                  fontSize={11}
+                  textAnchor="middle"
+                >
+                  {formatDateShort(b.date)}
+                </text>
+              );
+            })}
+
+            {/* Bollinger Band fill */}
+            {bbFillPath && (
+              <path d={bbFillPath} fill="#4f8ff7" fillOpacity={0.07} />
+            )}
 
             {/* Bollinger Band lines */}
-            <Line
-              type="monotone"
-              dataKey="bbUpper"
-              stroke="#4f8ff7"
-              strokeWidth={1}
-              strokeDasharray="4 2"
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="bbLower"
-              stroke="#4f8ff7"
-              strokeWidth={1}
-              strokeDasharray="4 2"
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="bbMiddle"
-              stroke="#4f8ff7"
-              strokeWidth={1}
-              strokeOpacity={0.4}
-              dot={false}
-              isAnimationActive={false}
-            />
-
-            {/* Candlesticks rendered via Customized SVG */}
-            <Customized
-              component={(props: any) => {
-                const { xAxisMap, yAxisMap, formattedGraphicalItems } = props;
-                if (!xAxisMap || !yAxisMap) return null;
-                const xAxis = Object.values(xAxisMap)[0] as any;
-                const yAxis = Object.values(yAxisMap)[0] as any;
-                if (!xAxis?.scale || !yAxis?.scale) return null;
-
-                const bandWidth = xAxis.bandSize || (xAxis.width / chartData.length);
-                const candleWidth = Math.max(1, Math.min(8, bandWidth * 0.6));
-
-                return (
-                  <g>
-                    {chartData.map((d, i) => {
-                      const x = xAxis.scale(i) + (bandWidth - candleWidth) / 2;
-                      const yHigh = yAxis.scale(d.high);
-                      const yLow = yAxis.scale(d.low);
-                      const yOpen = yAxis.scale(d.open);
-                      const yClose = yAxis.scale(d.close);
-                      const isUp = d.close >= d.open;
-                      const color = isUp ? '#22c55e' : '#ef4444';
-                      const bodyTop = Math.min(yOpen, yClose);
-                      const bodyHeight = Math.max(1, Math.abs(yOpen - yClose));
-                      const wickX = x + candleWidth / 2;
-
-                      return (
-                        <g key={i}>
-                          {/* Wick (high to low) */}
-                          <line
-                            x1={wickX}
-                            y1={yHigh}
-                            x2={wickX}
-                            y2={yLow}
-                            stroke={color}
-                            strokeWidth={1}
-                          />
-                          {/* Body (open to close) */}
-                          <rect
-                            x={x}
-                            y={bodyTop}
-                            width={candleWidth}
-                            height={bodyHeight}
-                            fill={isUp ? color : color}
-                            stroke={color}
-                            strokeWidth={0.5}
-                          />
-                        </g>
-                      );
-                    })}
-                  </g>
-                );
-              }}
-            />
-            {/* Hidden close line for tooltip tracking */}
-            <Line
-              type="monotone"
-              dataKey="close"
-              stroke="transparent"
-              strokeWidth={0}
-              dot={false}
-              activeDot={false}
-              isAnimationActive={false}
-            />
+            {bbUpperPath && (
+              <path d={bbUpperPath} fill="none" stroke="#4f8ff7" strokeWidth={1} strokeDasharray="4 2" />
+            )}
+            {bbLowerPath && (
+              <path d={bbLowerPath} fill="none" stroke="#4f8ff7" strokeWidth={1} strokeDasharray="4 2" />
+            )}
+            {bbMiddlePath && (
+              <path d={bbMiddlePath} fill="none" stroke="#ef4444" strokeWidth={1} strokeOpacity={0.7} />
+            )}
 
             {/* SMA 20 */}
-            <Line
-              type="monotone"
-              dataKey="sma20"
-              stroke="#f59e0b"
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
+            {sma20Path && (
+              <path d={sma20Path} fill="none" stroke="#f59e0b" strokeWidth={1.5} />
+            )}
 
             {/* SMA 50 */}
-            <Line
-              type="monotone"
-              dataKey="sma50"
-              stroke="#a855f7"
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+            {sma50Path && (
+              <path d={sma50Path} fill="none" stroke="#a855f7" strokeWidth={1.5} />
+            )}
+
+            {/* Candlesticks */}
+            {bars.map((b, i) => {
+              const cx = xScale(i);
+              const isUp = b.close >= b.open;
+              const color = isUp ? '#26a69a' : '#ef5350';
+              const bodyTop = yScale(Math.max(b.open, b.close));
+              const bodyBottom = yScale(Math.min(b.open, b.close));
+              const bodyH = Math.max(1, bodyBottom - bodyTop);
+
+              return (
+                <g key={i}>
+                  {/* Wick */}
+                  <line
+                    x1={cx}
+                    y1={yScale(b.high)}
+                    x2={cx}
+                    y2={yScale(b.low)}
+                    stroke={color}
+                    strokeWidth={1}
+                  />
+                  {/* Body */}
+                  <rect
+                    x={cx - candleWidth / 2}
+                    y={bodyTop}
+                    width={candleWidth}
+                    height={bodyH}
+                    fill={color}
+                    stroke={color}
+                    strokeWidth={0.5}
+                  />
+                </g>
+              );
+            })}
+
+            {/* Hover crosshair + invisible hit areas */}
+            {bars.map((_, i) => (
+              <rect
+                key={i}
+                x={xScale(i) - barWidth / 2}
+                y={dim.marginTop}
+                width={barWidth}
+                height={dim.plotHeight}
+                fill="transparent"
+                onMouseEnter={() => setHoverIndex(i)}
+              />
+            ))}
+
+            {/* Crosshair */}
+            {hoverIndex != null && (
+              <>
+                <line
+                  x1={xScale(hoverIndex)}
+                  y1={dim.marginTop}
+                  x2={xScale(hoverIndex)}
+                  y2={dim.marginTop + dim.plotHeight}
+                  stroke="#8b8fa3"
+                  strokeWidth={0.5}
+                  strokeDasharray="4 2"
+                />
+              </>
+            )}
+          </svg>
+        )}
+
+        {/* Tooltip overlay */}
+        {hoveredBar && hoverIndex != null && (
+          <div
+            className="absolute pointer-events-none z-10"
+            style={{
+              left: xScale(hoverIndex) + (hoverIndex > bars.length / 2 ? -220 : 20),
+              top: dim.marginTop,
+            }}
+          >
+            <div className="bg-[#1a1d27] border border-[#2a2e3a] rounded-lg p-3 text-xs shadow-xl">
+              <div className="font-medium text-white mb-2">{formatDateFull(hoveredBar.date)}</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                <span className="text-dim">Open</span>
+                <span className="text-right font-mono">${hoveredBar.open.toFixed(2)}</span>
+                <span className="text-dim">High</span>
+                <span className="text-right font-mono">${hoveredBar.high.toFixed(2)}</span>
+                <span className="text-dim">Low</span>
+                <span className="text-right font-mono">${hoveredBar.low.toFixed(2)}</span>
+                <span className="text-dim">Close</span>
+                <span className="text-right font-mono" style={{ color: hoveredBar.close >= hoveredBar.open ? '#26a69a' : '#ef5350' }}>
+                  ${hoveredBar.close.toFixed(2)} ({hoveredBar.close >= hoveredBar.open ? '+' : ''}{((hoveredBar.close - hoveredBar.open) / hoveredBar.open * 100).toFixed(2)}%)
+                </span>
+              </div>
+              {(hoveredBar.sma20 != null || hoveredBar.sma50 != null) && (
+                <div className="mt-2 pt-2 border-t border-[#2a2e3a] grid grid-cols-2 gap-x-4 gap-y-1">
+                  {hoveredBar.sma20 != null && (
+                    <>
+                      <span className="text-[#f59e0b]">SMA 20</span>
+                      <span className="text-right font-mono">${hoveredBar.sma20.toFixed(2)}</span>
+                    </>
+                  )}
+                  {hoveredBar.sma50 != null && (
+                    <>
+                      <span className="text-[#a855f7]">SMA 50</span>
+                      <span className="text-right font-mono">${hoveredBar.sma50.toFixed(2)}</span>
+                    </>
+                  )}
+                </div>
+              )}
+              {hoveredBar.bbUpper != null && (
+                <div className="mt-2 pt-2 border-t border-[#2a2e3a] grid grid-cols-2 gap-x-4 gap-y-1">
+                  <span className="text-[#4f8ff7]">BB Upper</span>
+                  <span className="text-right font-mono">${hoveredBar.bbUpper.toFixed(2)}</span>
+                  <span className="text-[#ef4444]/70">BB Basis</span>
+                  <span className="text-right font-mono">${hoveredBar.bbMiddle!.toFixed(2)}</span>
+                  <span className="text-[#4f8ff7]">BB Lower</span>
+                  <span className="text-right font-mono">${hoveredBar.bbLower!.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Legend */}
       <div className="flex justify-center gap-5 mt-3 text-xs text-dim flex-wrap">
         <span className="flex items-center gap-1.5">
           <span className="inline-flex items-center gap-0.5">
-            <span className="w-1.5 h-3 bg-[#22c55e] inline-block rounded-sm" />
-            <span className="w-1.5 h-3 bg-[#ef4444] inline-block rounded-sm" />
+            <span className="w-2 h-3 bg-[#26a69a] inline-block rounded-sm" />
+            <span className="w-2 h-3 bg-[#ef5350] inline-block rounded-sm" />
           </span>
-          Candlestick
+          OHLC
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-4 h-0.5 bg-[#f59e0b] inline-block" /> SMA 20
@@ -360,7 +418,10 @@ export default function PriceHistoryChart({ ticker }: Props) {
           <span className="w-4 h-0.5 bg-[#a855f7] inline-block" /> SMA 50
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-4 h-0.5 inline-block" style={{ borderTop: '1px dashed #4f8ff7' }} /> Bollinger Bands (20, 2)
+          <span className="w-4 h-0.5 inline-block" style={{ borderTop: '1px dashed #4f8ff7' }} /> BB (20, 2)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-0.5 bg-[#ef4444]/70 inline-block" /> BB Basis
         </span>
       </div>
     </div>
