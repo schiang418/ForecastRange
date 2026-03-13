@@ -43,6 +43,7 @@ export default function PriceHistoryChart({ ticker }: Props) {
   const [containerWidth, setContainerWidth] = useState(0);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [showVolume, setShowVolume] = useState(true);
+  const [chartType, setChartType] = useState<'candle' | 'line'>('candle');
 
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     if (!node) return;
@@ -183,6 +184,10 @@ export default function PriceHistoryChart({ ticker }: Props) {
   const sma50Path = buildPricePath((b) => b.sma50);
   const sma200Path = buildPricePath((b) => b.sma200);
   const rsiPath = buildRSIPath();
+  const closePath = buildPricePath((b) => b.close);
+  const closeAreaPath = closePath
+    ? `${closePath}L${xScale(bars.length - 1)},${priceYScale(pYMin)}L${xScale(0)},${priceYScale(pYMin)}Z`
+    : '';
 
   const hoveredBar = hoverIndex != null ? bars[hoverIndex] : null;
 
@@ -236,6 +241,17 @@ export default function PriceHistoryChart({ ticker }: Props) {
           </div>
         </div>
         <div className="flex gap-1 shrink-0 items-center">
+          <button
+            onClick={() => setChartType(chartType === 'candle' ? 'line' : 'candle')}
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+              chartType === 'line'
+                ? 'bg-surface text-white border border-edge'
+                : 'bg-surface text-dim hover:text-white border border-transparent'
+            }`}
+            title="Toggle between candlestick and line chart"
+          >
+            {chartType === 'candle' ? 'Line' : 'Candle'}
+          </button>
           <button
             onClick={() => setShowVolume(!showVolume)}
             className={`px-3 py-1 rounded text-xs font-medium transition-colors mr-2 ${
@@ -296,20 +312,27 @@ export default function PriceHistoryChart({ ticker }: Props) {
             {sma50Path && <path d={sma50Path} fill="none" stroke="#a855f7" strokeWidth={1.5} />}
             {sma200Path && <path d={sma200Path} fill="none" stroke="#06b6d4" strokeWidth={1.5} strokeDasharray="6 3" />}
 
-            {/* Candlesticks */}
-            {bars.map((b, i) => {
-              const cx = xScale(i);
-              const isUp = b.close >= b.open;
-              const color = isUp ? '#26a69a' : '#ef5350';
-              const bodyTop = priceYScale(Math.max(b.open, b.close));
-              const bodyH = Math.max(1, priceYScale(Math.min(b.open, b.close)) - bodyTop);
-              return (
-                <g key={i}>
-                  <line x1={cx} y1={priceYScale(b.high)} x2={cx} y2={priceYScale(b.low)} stroke={color} strokeWidth={1} />
-                  <rect x={cx - candleW / 2} y={bodyTop} width={candleW} height={bodyH} fill={color} stroke={color} strokeWidth={0.5} />
-                </g>
-              );
-            })}
+            {/* Price data: Candlesticks or Line */}
+            {chartType === 'candle' ? (
+              bars.map((b, i) => {
+                const cx = xScale(i);
+                const isUp = b.close >= b.open;
+                const color = isUp ? '#26a69a' : '#ef5350';
+                const bodyTop = priceYScale(Math.max(b.open, b.close));
+                const bodyH = Math.max(1, priceYScale(Math.min(b.open, b.close)) - bodyTop);
+                return (
+                  <g key={i}>
+                    <line x1={cx} y1={priceYScale(b.high)} x2={cx} y2={priceYScale(b.low)} stroke={color} strokeWidth={1} />
+                    <rect x={cx - candleW / 2} y={bodyTop} width={candleW} height={bodyH} fill={color} stroke={color} strokeWidth={0.5} />
+                  </g>
+                );
+              })
+            ) : (
+              <>
+                {closeAreaPath && <path d={closeAreaPath} fill="#26a69a" fillOpacity={0.08} />}
+                {closePath && <path d={closePath} fill="none" stroke="#26a69a" strokeWidth={1.5} />}
+              </>
+            )}
 
             {/* ═══ VOLUME BARS (overlaid on price chart bottom) ═══ */}
             {showVolume && bars.map((b, i) => {
