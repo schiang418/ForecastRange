@@ -276,9 +276,11 @@ export interface ChartBar {
   volume: number;
   sma20: number | null;
   sma50: number | null;
+  sma200: number | null;
   bbUpper: number | null;
   bbMiddle: number | null;
   bbLower: number | null;
+  rsi14: number | null;
 }
 
 export type ChartPeriod = '3m' | '6m' | '1y' | '2y';

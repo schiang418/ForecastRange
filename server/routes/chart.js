@@ -1,6 +1,5 @@
 const express = require('express');
 const { fetchDailyBars } = require('../../src/polygon');
-const { sma, ema, emaSeries, bollingerBands } = require('../../src/indicators');
 
 const router = express.Router();
 
@@ -16,6 +15,49 @@ function smaSeries(closes, period) {
       sum += closes[j];
     }
     result[i] = sum / period;
+  }
+  return result;
+}
+
+/**
+ * Compute full RSI series using Wilder's smoothing.
+ * Returns array of same length as closes (null where insufficient data).
+ */
+function rsiSeries(closes, period = 14) {
+  const result = new Array(closes.length).fill(null);
+  if (closes.length < period + 1) return result;
+
+  const changes = [];
+  for (let i = 1; i < closes.length; i++) {
+    changes.push(closes[i] - closes[i - 1]);
+  }
+
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    if (changes[i] > 0) avgGain += changes[i];
+    else avgLoss += Math.abs(changes[i]);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  // First RSI value at index period
+  if (avgLoss === 0) result[period] = 100;
+  else {
+    const rs = avgGain / avgLoss;
+    result[period] = 100 - 100 / (1 + rs);
+  }
+
+  for (let i = period; i < changes.length; i++) {
+    const gain = changes[i] > 0 ? changes[i] : 0;
+    const loss = changes[i] < 0 ? Math.abs(changes[i]) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    if (avgLoss === 0) result[i + 1] = 100;
+    else {
+      const rs = avgGain / avgLoss;
+      result[i + 1] = Math.round((100 - 100 / (1 + rs)) * 100) / 100;
+    }
   }
   return result;
 }
@@ -59,12 +101,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Invalid ticker symbol' });
     }
 
-    // Map period to calendar days (add extra for indicator warm-up)
+    // Map period to calendar days (add extra for SMA200 + indicator warm-up)
     const periodDays = {
-      '3m': 90 + 60,
-      '6m': 180 + 60,
-      '1y': 365 + 60,
-      '2y': 730 + 60,
+      '3m': 90 + 300,
+      '6m': 180 + 300,
+      '1y': 365 + 300,
+      '2y': 730 + 300,
     };
     const totalDays = periodDays[period] || periodDays['6m'];
 
@@ -84,7 +126,9 @@ router.post('/', async (req, res) => {
     // Compute indicator series
     const sma20Series = smaSeries(closes, 20);
     const sma50Series = smaSeries(closes, 50);
+    const sma200Series = smaSeries(closes, 200);
     const bbSeries = bollingerSeries(closes, 20, 2);
+    const rsi14Series = rsiSeries(closes, 14);
 
     // Trim warm-up bars (first 50 entries may lack indicators)
     // Only return the requested visible period
@@ -110,9 +154,11 @@ router.post('/', async (req, res) => {
         volume: bar.v,
         sma20: sma20Series[i] != null ? Math.round(sma20Series[i] * 100) / 100 : null,
         sma50: sma50Series[i] != null ? Math.round(sma50Series[i] * 100) / 100 : null,
+        sma200: sma200Series[i] != null ? Math.round(sma200Series[i] * 100) / 100 : null,
         bbUpper: bb ? Math.round(bb.upper * 100) / 100 : null,
         bbMiddle: bb ? Math.round(bb.middle * 100) / 100 : null,
         bbLower: bb ? Math.round(bb.lower * 100) / 100 : null,
+        rsi14: rsi14Series[i],
       });
     }
 
