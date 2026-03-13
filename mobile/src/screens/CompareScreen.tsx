@@ -94,7 +94,7 @@ function RankCard({ item }: { item: CompareTickerResult }) {
         <View style={styles.rankRow}>
           <Text style={styles.rankLabel}>1W Move</Text>
           <Text style={styles.rankValue}>
-            ±{(item.weekMove * 100).toFixed(1)}%
+            ±{item.weekMove.toFixed(1)}%
             {item.weekSkew ? ` (${item.weekSkew})` : ''}
           </Text>
         </View>
