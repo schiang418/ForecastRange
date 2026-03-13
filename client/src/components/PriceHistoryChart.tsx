@@ -186,9 +186,40 @@ export default function PriceHistoryChart({ ticker }: Props) {
 
   return (
     <div className="bg-surface-card border border-edge rounded-lg p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-dim">Price History</h3>
-        <div className="flex gap-1">
+      {/* Header row: title + hover readout + period buttons */}
+      <div className="flex items-start justify-between mb-4 gap-4">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-medium text-dim mb-1">Price History</h3>
+          {/* Stationary hover readout */}
+          {hoveredBar ? (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs font-mono">
+              <span className="text-white font-medium font-sans">{formatDateFull(hoveredBar.date)}</span>
+              <span className="text-dim">O <span className="text-white">{hoveredBar.open.toFixed(2)}</span></span>
+              <span className="text-dim">H <span className="text-white">{hoveredBar.high.toFixed(2)}</span></span>
+              <span className="text-dim">L <span className="text-white">{hoveredBar.low.toFixed(2)}</span></span>
+              <span className="text-dim">C{' '}
+                <span style={{ color: hoveredBar.close >= hoveredBar.open ? '#26a69a' : '#ef5350' }}>
+                  {hoveredBar.close.toFixed(2)} ({hoveredBar.close >= hoveredBar.open ? '+' : ''}{((hoveredBar.close - hoveredBar.open) / hoveredBar.open * 100).toFixed(2)}%)
+                </span>
+              </span>
+              {hoveredBar.sma20 != null && (
+                <span><span className="text-[#f59e0b]">SMA20</span> <span className="text-white">{hoveredBar.sma20.toFixed(2)}</span></span>
+              )}
+              {hoveredBar.sma50 != null && (
+                <span><span className="text-[#a855f7]">SMA50</span> <span className="text-white">{hoveredBar.sma50.toFixed(2)}</span></span>
+              )}
+              {hoveredBar.bbUpper != null && (
+                <>
+                  <span><span className="text-[#4f8ff7]">BB</span> <span className="text-white">{hoveredBar.bbLower!.toFixed(2)}</span><span className="text-dim"> — </span><span className="text-white">{hoveredBar.bbUpper.toFixed(2)}</span></span>
+                  <span><span className="text-[#ef4444]/70">Basis</span> <span className="text-white">{hoveredBar.bbMiddle!.toFixed(2)}</span></span>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-dim/50 h-[18px]">Hover over chart for details</div>
+          )}
+        </div>
+        <div className="flex gap-1 shrink-0">
           {PERIODS.map((p) => (
             <button
               key={p.value}
@@ -348,58 +379,6 @@ export default function PriceHistoryChart({ ticker }: Props) {
           </svg>
         )}
 
-        {/* Tooltip overlay */}
-        {hoveredBar && hoverIndex != null && (
-          <div
-            className="absolute pointer-events-none z-10"
-            style={{
-              left: xScale(hoverIndex) + (hoverIndex > bars.length / 2 ? -220 : 20),
-              top: dim.marginTop,
-            }}
-          >
-            <div className="bg-[#1a1d27] border border-[#2a2e3a] rounded-lg p-3 text-xs shadow-xl">
-              <div className="font-medium text-white mb-2">{formatDateFull(hoveredBar.date)}</div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                <span className="text-dim">Open</span>
-                <span className="text-right font-mono">${hoveredBar.open.toFixed(2)}</span>
-                <span className="text-dim">High</span>
-                <span className="text-right font-mono">${hoveredBar.high.toFixed(2)}</span>
-                <span className="text-dim">Low</span>
-                <span className="text-right font-mono">${hoveredBar.low.toFixed(2)}</span>
-                <span className="text-dim">Close</span>
-                <span className="text-right font-mono" style={{ color: hoveredBar.close >= hoveredBar.open ? '#26a69a' : '#ef5350' }}>
-                  ${hoveredBar.close.toFixed(2)} ({hoveredBar.close >= hoveredBar.open ? '+' : ''}{((hoveredBar.close - hoveredBar.open) / hoveredBar.open * 100).toFixed(2)}%)
-                </span>
-              </div>
-              {(hoveredBar.sma20 != null || hoveredBar.sma50 != null) && (
-                <div className="mt-2 pt-2 border-t border-[#2a2e3a] grid grid-cols-2 gap-x-4 gap-y-1">
-                  {hoveredBar.sma20 != null && (
-                    <>
-                      <span className="text-[#f59e0b]">SMA 20</span>
-                      <span className="text-right font-mono">${hoveredBar.sma20.toFixed(2)}</span>
-                    </>
-                  )}
-                  {hoveredBar.sma50 != null && (
-                    <>
-                      <span className="text-[#a855f7]">SMA 50</span>
-                      <span className="text-right font-mono">${hoveredBar.sma50.toFixed(2)}</span>
-                    </>
-                  )}
-                </div>
-              )}
-              {hoveredBar.bbUpper != null && (
-                <div className="mt-2 pt-2 border-t border-[#2a2e3a] grid grid-cols-2 gap-x-4 gap-y-1">
-                  <span className="text-[#4f8ff7]">BB Upper</span>
-                  <span className="text-right font-mono">${hoveredBar.bbUpper.toFixed(2)}</span>
-                  <span className="text-[#ef4444]/70">BB Basis</span>
-                  <span className="text-right font-mono">${hoveredBar.bbMiddle!.toFixed(2)}</span>
-                  <span className="text-[#4f8ff7]">BB Lower</span>
-                  <span className="text-right font-mono">${hoveredBar.bbLower!.toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Legend */}
