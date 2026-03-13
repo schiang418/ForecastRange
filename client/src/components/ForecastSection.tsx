@@ -4,6 +4,7 @@ import { fetchForecast, fetchSpreadAnalysis, ForecastResult } from '../api';
 import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
+import PriceHistoryChart from './PriceHistoryChart';
 import { downloadForecastMarkdown } from '../exportMarkdown';
 
 type ViewTab = 'all' | '1' | '2' | '3' | '4';
@@ -337,6 +338,9 @@ export default function ForecastSection() {
               );
             })}
           </div>
+
+          {/* Price History Chart */}
+          <PriceHistoryChart ticker={result.ticker} />
 
           {/* Cone Chart */}
           <div className="bg-surface-card border border-edge rounded-lg p-5">
