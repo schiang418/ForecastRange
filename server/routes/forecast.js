@@ -1,5 +1,5 @@
 const express = require('express');
-const { fetchDailyBars, fetchOptionsChain, extractAtmIV } = require('../../src/polygon');
+const { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV } = require('../../src/polygon');
 const { computeForecast } = require('../../src/forecast');
 const { upsertIV, getIVHistory } = require('../ivHistory');
 const { autoBackfillIfNeeded } = require('../ivBackfill');
@@ -111,11 +111,23 @@ router.post('/', async (req, res) => {
       result.ivDbError = ivDbError;
     }
 
-    // Compute credit spread pricing using the same options chain
-    if (optionsChain && optionsChain.length > 0 && result.horizons) {
+    // Compute credit spread pricing
+    // The initial optionsChain (250 contracts) is ATM-focused.
+    // For OTM credit spreads we need more data — fetch the full chain with pagination.
+    if (result.horizons) {
       try {
-        result.creditSpreadPricing = computeCreditSpreadPricing(optionsChain, result.horizons, spot);
-        console.log(`[forecast] ${cleanTicker}: credit spread pricing computed`);
+        // Fetch full options chain (all expirations, all types) with pagination
+        const fullChain = await fetchOptionsForExpiration(cleanTicker).catch(err => {
+          console.warn(`[forecast] Full options chain fetch failed for ${cleanTicker}: ${err.message}`);
+          return optionsChain || [];
+        });
+        const chainToUse = fullChain && fullChain.length > 0 ? fullChain : (optionsChain || []);
+        console.log(`[forecast] ${cleanTicker}: ${chainToUse.length} total option contracts for credit spreads`);
+
+        if (chainToUse.length > 0) {
+          result.creditSpreadPricing = computeCreditSpreadPricing(chainToUse, result.horizons, spot);
+          console.log(`[forecast] ${cleanTicker}: credit spread pricing computed`);
+        }
       } catch (err) {
         console.warn(`[forecast] Credit spread pricing failed for ${cleanTicker}: ${err.message}`);
       }
