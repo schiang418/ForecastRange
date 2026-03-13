@@ -302,31 +302,49 @@ async function fetchOptionsForExpiration(ticker, expirationDate, contractType) {
 }
 
 /**
- * Find the mid price for a specific option contract from a list of contracts.
+ * Find the best price for an option contract at or near a target strike.
+ * First tries exact match, then finds the closest available strike within maxDist.
+ * Uses multiple price fallbacks: midpoint → (bid+ask)/2 → fair_market_value → last_trade.
  * Returns { strike, mid, bid, ask, iv, volume, openInterest } or null.
  */
-function findContractPrice(contracts, targetStrike, contractType) {
-  // Find exact match or closest strike
-  const matching = contracts.filter(c =>
+function findContractPrice(contracts, targetStrike, contractType, maxDist = 5) {
+  // Filter to matching contract type
+  const typed = contracts.filter(c =>
     c.details?.contract_type === contractType &&
-    c.details?.strike_price === targetStrike
+    c.details?.strike_price != null
   );
 
-  if (matching.length === 0) return null;
+  if (typed.length === 0) return null;
 
-  const c = matching[0];
-  const bid = c.last_quote?.bid ?? 0;
-  const ask = c.last_quote?.ask ?? 0;
-  const mid = c.last_quote?.midpoint ?? ((bid + ask) / 2);
+  // Find exact match first, then closest within maxDist
+  let best = null;
+  let bestDist = Infinity;
+  for (const c of typed) {
+    const dist = Math.abs(c.details.strike_price - targetStrike);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = c;
+    }
+  }
+
+  if (!best || bestDist > maxDist) return null;
+
+  const bid = best.last_quote?.bid ?? 0;
+  const ask = best.last_quote?.ask ?? 0;
+  // Multiple price fallbacks for better coverage
+  let mid = best.last_quote?.midpoint;
+  if (!mid || mid <= 0) mid = (bid + ask) / 2;
+  if (!mid || mid <= 0) mid = best.fair_market_value ?? 0;
+  if (!mid || mid <= 0) mid = best.last_trade?.price ?? 0;
 
   return {
-    strike: targetStrike,
+    strike: best.details.strike_price,
     mid: Math.round(mid * 100) / 100,
     bid: Math.round(bid * 100) / 100,
     ask: Math.round(ask * 100) / 100,
-    iv: c.implied_volatility ?? null,
-    volume: c.day?.volume ?? 0,
-    openInterest: c.open_interest ?? 0,
+    iv: best.implied_volatility ?? null,
+    volume: best.day?.volume ?? 0,
+    openInterest: best.open_interest ?? 0,
   };
 }
 

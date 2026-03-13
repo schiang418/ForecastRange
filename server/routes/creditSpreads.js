@@ -33,6 +33,7 @@ router.post('/', async (req, res) => {
         fetchOptionsForExpiration(ticker, exp, 'call').catch(() => []),
       ]);
       chainsByExpiration[exp] = { puts, calls };
+      console.log(`[credit-spreads] ${ticker} exp=${exp}: ${puts.length} puts, ${calls.length} calls`);
     }));
 
     // For each horizon, compute credit spread pricing for each range
@@ -67,57 +68,55 @@ router.post('/', async (req, res) => {
         const range = h[rangeName];
         if (!range) continue;
 
-        // PUT CREDIT SPREAD: sell put just below range low, buy put $50 lower
-        const putSellStrike = roundToStrike(range.low, 'down');
-        const putBuyStrike = putSellStrike - SPREAD_WIDTH;
+        // PUT CREDIT SPREAD: sell put just below range low, buy put ~$50 lower
+        const putSellTarget = roundToStrike(range.low, 'down');
+        const putBuyTarget = putSellTarget - SPREAD_WIDTH;
 
-        if (putBuyStrike > 0) {
-          const sellPut = findContractPrice(chains.puts, putSellStrike, 'put');
-          const buyPut = findContractPrice(chains.puts, putBuyStrike, 'put');
+        if (putBuyTarget > 0) {
+          const sellPut = findContractPrice(chains.puts, putSellTarget, 'put', 10);
+          const buyPut = sellPut
+            ? findContractPrice(chains.puts, sellPut.strike - SPREAD_WIDTH, 'put', 10)
+            : null;
 
-          if (sellPut && buyPut) {
+          if (sellPut && buyPut && sellPut.strike !== buyPut.strike) {
             const premium = Math.round((sellPut.mid - buyPut.mid) * 100) / 100;
+            const actualWidth = sellPut.strike - buyPut.strike;
             putRow.ranges[rangeName] = {
-              sellStrike: putSellStrike,
-              buyStrike: putBuyStrike,
+              sellStrike: sellPut.strike,
+              buyStrike: buyPut.strike,
               sellMid: sellPut.mid,
               buyMid: buyPut.mid,
-              premium,
-              premiumPerContract: Math.round(premium * 100), // in dollars (1 contract = 100 shares)
-              maxLoss: Math.round((SPREAD_WIDTH - premium) * 100),
+              premium: Math.max(0, premium),
+              premiumPerContract: Math.max(0, Math.round(premium * 100)),
+              maxLoss: Math.round((actualWidth - Math.max(0, premium)) * 100),
               sellIV: sellPut.iv,
               buyIV: buyPut.iv,
             };
-          } else {
-            // Try nearby strikes if exact not found
-            const altResult = findNearbySpread(chains.puts, putSellStrike, putBuyStrike, 'put', SPREAD_WIDTH);
-            putRow.ranges[rangeName] = altResult;
           }
         }
 
-        // CALL CREDIT SPREAD: sell call just above range high, buy call $50 higher
-        const callSellStrike = roundToStrike(range.high, 'up');
-        const callBuyStrike = callSellStrike + SPREAD_WIDTH;
+        // CALL CREDIT SPREAD: sell call just above range high, buy call ~$50 higher
+        const callSellTarget = roundToStrike(range.high, 'up');
 
-        const sellCall = findContractPrice(chains.calls, callSellStrike, 'call');
-        const buyCall = findContractPrice(chains.calls, callBuyStrike, 'call');
+        const sellCall = findContractPrice(chains.calls, callSellTarget, 'call', 10);
+        const buyCall = sellCall
+          ? findContractPrice(chains.calls, sellCall.strike + SPREAD_WIDTH, 'call', 10)
+          : null;
 
-        if (sellCall && buyCall) {
+        if (sellCall && buyCall && sellCall.strike !== buyCall.strike) {
           const premium = Math.round((sellCall.mid - buyCall.mid) * 100) / 100;
+          const actualWidth = buyCall.strike - sellCall.strike;
           callRow.ranges[rangeName] = {
-            sellStrike: callSellStrike,
-            buyStrike: callBuyStrike,
+            sellStrike: sellCall.strike,
+            buyStrike: buyCall.strike,
             sellMid: sellCall.mid,
             buyMid: buyCall.mid,
-            premium,
-            premiumPerContract: Math.round(premium * 100),
-            maxLoss: Math.round((SPREAD_WIDTH - premium) * 100),
+            premium: Math.max(0, premium),
+            premiumPerContract: Math.max(0, Math.round(premium * 100)),
+            maxLoss: Math.round((actualWidth - Math.max(0, premium)) * 100),
             sellIV: sellCall.iv,
             buyIV: buyCall.iv,
           };
-        } else {
-          const altResult = findNearbySpread(chains.calls, callSellStrike, callBuyStrike, 'call', SPREAD_WIDTH);
-          callRow.ranges[rangeName] = altResult;
         }
       }
 
@@ -136,68 +135,5 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: `Failed to compute credit spreads: ${err.message}` });
   }
 });
-
-/**
- * Try to find a nearby spread when exact strikes aren't available.
- * Searches within $10 of the target strikes.
- */
-function findNearbySpread(contracts, targetSellStrike, targetBuyStrike, contractType, spreadWidth) {
-  // Get all available strikes
-  const availableStrikes = [...new Set(
-    contracts
-      .filter(c => c.details?.contract_type === contractType && c.details?.strike_price != null)
-      .map(c => c.details.strike_price)
-  )].sort((a, b) => a - b);
-
-  if (availableStrikes.length === 0) return null;
-
-  // Find the closest sell strike to our target
-  let bestSell = null;
-  let minDist = Infinity;
-  for (const s of availableStrikes) {
-    const dist = Math.abs(s - targetSellStrike);
-    if (dist < minDist && dist <= 10) {
-      minDist = dist;
-      bestSell = s;
-    }
-  }
-
-  if (bestSell === null) return null;
-
-  // Find a buy strike that's approximately spreadWidth away
-  const targetBuy = contractType === 'put' ? bestSell - spreadWidth : bestSell + spreadWidth;
-  let bestBuy = null;
-  minDist = Infinity;
-  for (const s of availableStrikes) {
-    const dist = Math.abs(s - targetBuy);
-    if (dist < minDist && dist <= 15) {
-      minDist = dist;
-      bestBuy = s;
-    }
-  }
-
-  if (bestBuy === null) return null;
-
-  const sellContract = findContractPrice(contracts, bestSell, contractType);
-  const buyContract = findContractPrice(contracts, bestBuy, contractType);
-
-  if (!sellContract || !buyContract) return null;
-
-  const actualWidth = Math.abs(bestSell - bestBuy);
-  const premium = Math.round((sellContract.mid - buyContract.mid) * 100) / 100;
-
-  return {
-    sellStrike: bestSell,
-    buyStrike: bestBuy,
-    sellMid: sellContract.mid,
-    buyMid: buyContract.mid,
-    premium,
-    premiumPerContract: Math.round(premium * 100),
-    maxLoss: Math.round((actualWidth - premium) * 100),
-    sellIV: sellContract.iv,
-    buyIV: buyContract.iv,
-    adjusted: true, // flag that strikes were adjusted from ideal
-  };
-}
 
 module.exports = router;
