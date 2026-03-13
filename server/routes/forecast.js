@@ -124,6 +124,60 @@ router.post('/', async (req, res) => {
 });
 
 /**
+ * GET /api/forecast/debug-option
+ * Test endpoint to see raw Polygon API response for a single option contract.
+ * Usage: /api/forecast/debug-option?ticker=TSLA&strike=370&exp=2026-03-20&type=P
+ */
+router.get('/debug-option', async (req, res) => {
+  try {
+    const { ticker, strike, exp, type } = req.query;
+    if (!ticker || !strike || !exp || !type) {
+      return res.status(400).json({ error: 'Need ticker, strike, exp, type params' });
+    }
+
+    const putCall = String(type).toUpperCase();
+    const optionTicker = buildOptionTicker(String(ticker).toUpperCase(), String(exp), putCall, Number(strike));
+
+    // Try both API keys
+    const stockKey = process.env.MASSIVE_STOCK_API_KEY;
+    const optionKey = process.env.MASSIVE_API_KEY;
+
+    const results = {};
+
+    // Test with MASSIVE_STOCK_API_KEY
+    if (stockKey) {
+      const url = `https://api.polygon.io/v3/snapshot/options/${ticker}/${optionTicker}?apiKey=${stockKey}`;
+      const r = await fetch(url);
+      results.stockKey = { status: r.status, body: r.ok ? await r.json() : await r.text() };
+    }
+
+    // Test with MASSIVE_API_KEY (if different)
+    if (optionKey && optionKey !== stockKey) {
+      const url = `https://api.polygon.io/v3/snapshot/options/${ticker}/${optionTicker}?apiKey=${optionKey}`;
+      const r = await fetch(url);
+      results.optionKey = { status: r.status, body: r.ok ? await r.json() : await r.text() };
+    }
+
+    // Also try prev close
+    const prevUrl = `https://api.polygon.io/v2/aggs/ticker/${optionTicker}/prev?adjusted=true&apiKey=${stockKey || optionKey}`;
+    const prevRes = await fetch(prevUrl);
+    results.prevClose = { status: prevRes.status, body: prevRes.ok ? await prevRes.json() : await prevRes.text() };
+
+    res.json({
+      optionTicker,
+      envVars: {
+        MASSIVE_STOCK_API_KEY: stockKey ? `${stockKey.slice(0, 4)}...${stockKey.slice(-4)}` : 'NOT SET',
+        MASSIVE_API_KEY: optionKey ? `${optionKey.slice(0, 4)}...${optionKey.slice(-4)}` : 'NOT SET',
+        sameKey: stockKey === optionKey,
+      },
+      results,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * POST /api/forecast/credit-spreads
  * Body: { ticker: string, horizons: ForecastHorizon[], spot: number }
  *
