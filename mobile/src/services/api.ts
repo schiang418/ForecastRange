@@ -1,7 +1,10 @@
 import axios, { AxiosInstance } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL } from '../config';
-import { ForecastResult, CompareResult } from '../types/forecast';
+import {
+  ForecastResult, CompareResult, ChartResult, ChartPeriod,
+  EventsResult, CreditSpreadPricingResult, ForecastHorizon,
+} from '../types/forecast';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -68,6 +71,27 @@ class ApiClient {
   async fetchSpreadAnalysis(forecast: ForecastResult): Promise<string> {
     const { data } = await this.client.post('/api/forecast/spreads', { forecast });
     return data.analysis;
+  }
+
+  // ── Chart ────────────────────────────────────────────────
+
+  async fetchChart(ticker: string, period: ChartPeriod = '6m'): Promise<ChartResult> {
+    const { data } = await this.client.post('/api/chart', { ticker, period });
+    return data;
+  }
+
+  // ── Events ──────────────────────────────────────────────
+
+  async fetchEvents(ticker: string): Promise<EventsResult> {
+    const { data } = await this.client.post('/api/events', { ticker });
+    return data;
+  }
+
+  // ── Credit Spread Pricing ───────────────────────────────
+
+  async fetchCreditSpreads(ticker: string, horizons: ForecastHorizon[], spot: number): Promise<CreditSpreadPricingResult> {
+    const { data } = await this.client.post('/api/forecast/credit-spread-pricing', { ticker, horizons, spot });
+    return data;
   }
 
   // ── Compare ───────────────────────────────────────────────

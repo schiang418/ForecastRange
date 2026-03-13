@@ -206,3 +206,79 @@ export interface CompareResult {
   narrative: string | null;
   failed?: { ticker: string; error: string }[];
 }
+
+// ── Chart types ──
+
+export type ChartPeriod = '3m' | '6m' | '1y' | '2y';
+
+export interface ChartBar {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  sma20: number | null;
+  sma50: number | null;
+  sma200: number | null;
+  bbUpper: number | null;
+  bbMiddle: number | null;
+  bbLower: number | null;
+  rsi14: number | null;
+}
+
+export interface ChartResult {
+  ticker: string;
+  period: ChartPeriod;
+  bars: ChartBar[];
+}
+
+// ── Event types ──
+
+export interface UpcomingEvent {
+  type: 'fomc' | 'dividend' | 'split' | 'earnings';
+  date: string;
+  label: string;
+  description?: string;
+}
+
+export interface EventsResult {
+  ticker: string;
+  events: UpcomingEvent[];
+  fromDate: string;
+  toDate: string;
+}
+
+// ── Credit Spread Pricing types ──
+
+export interface CreditSpreadCell {
+  sellStrike: number;
+  buyStrike: number;
+  sellMid: number;
+  buyMid: number;
+  premium: number;
+  premiumPerContract: number;
+  maxLoss: number;
+  sellIV: number | null;
+  buyIV: number | null;
+}
+
+export interface CreditSpreadRow {
+  horizon: string;
+  horizonWeeks: number;
+  horizonDays: number;
+  targetDate: string | null;
+  expectedMove: number;
+  expectedMovePct: number;
+  ranges: {
+    range50?: CreditSpreadCell | null;
+    range68?: CreditSpreadCell | null;
+    range90?: CreditSpreadCell | null;
+  };
+}
+
+export interface CreditSpreadPricingResult {
+  putSpreads: CreditSpreadRow[];
+  callSpreads: CreditSpreadRow[];
+  spreadWidth: number;
+}

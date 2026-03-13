@@ -21,6 +21,27 @@ function medalColor(rank: number): string {
   return colors.textSecondary;
 }
 
+function ScoreBar({ label, value, max }: { label: string; value: number; max: number }) {
+  const pct = Math.min(100, (value / max) * 100);
+  return (
+    <View style={barStyles.row}>
+      <Text style={barStyles.label}>{label}</Text>
+      <View style={barStyles.track}>
+        <View style={[barStyles.fill, { width: `${pct}%` }]} />
+      </View>
+      <Text style={barStyles.value}>{value.toFixed(0)}</Text>
+    </View>
+  );
+}
+
+const barStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  label: { fontSize: 9, color: colors.textMuted, width: 50 },
+  track: { flex: 1, height: 6, backgroundColor: colors.surfaceLight, borderRadius: 3, overflow: 'hidden' },
+  fill: { height: '100%', backgroundColor: colors.accent, borderRadius: 3 },
+  value: { fontSize: 9, color: colors.textSecondary, width: 24, textAlign: 'right', fontFamily: 'monospace' },
+});
+
 function RankCard({ item }: { item: CompareTickerResult }) {
   return (
     <View style={styles.rankCard}>
@@ -69,6 +90,26 @@ function RankCard({ item }: { item: CompareTickerResult }) {
         </Text>
       </View>
 
+      {item.weekMove != null && (
+        <View style={styles.rankRow}>
+          <Text style={styles.rankLabel}>1W Move</Text>
+          <Text style={styles.rankValue}>
+            ±{(item.weekMove * 100).toFixed(1)}%
+            {item.weekSkew ? ` (${item.weekSkew})` : ''}
+          </Text>
+        </View>
+      )}
+
+      {/* Composite Score Breakdown */}
+      {item.compositeComponents && (
+        <View style={styles.scoreBreakdown}>
+          <ScoreBar label="Premium" value={item.compositeComponents.premiumScore} max={40} />
+          <ScoreBar label="IV/RV" value={item.compositeComponents.ivRvScore} max={25} />
+          <ScoreBar label="IV Pct" value={item.compositeComponents.ivPctScore} max={25} />
+          <ScoreBar label="Regime" value={item.compositeComponents.regimeScore} max={10} />
+        </View>
+      )}
+
       <Text style={styles.verdict}>{item.verdict}</Text>
     </View>
   );
@@ -76,7 +117,7 @@ function RankCard({ item }: { item: CompareTickerResult }) {
 
 export default function CompareScreen() {
   const [input, setInput] = useState('');
-  const { comparison, loading, error, fetchComparison } = useForecastStore();
+  const { comparison, loading, error, fetchComparison, fetchNarrative, narrativeLoading } = useForecastStore();
 
   const handleSubmit = () => {
     const tickers = input
@@ -130,14 +171,64 @@ export default function CompareScreen() {
         </View>
       )}
 
+      {/* Best Pick Banner */}
+      {comparison?.comparison.bestPick && (
+        <View style={styles.bestPickBanner}>
+          <Text style={styles.bestPickLabel}>Best Pick for Premium Selling</Text>
+          <Text style={styles.bestPickTicker}>{comparison.comparison.bestPick}</Text>
+        </View>
+      )}
+
       {comparison?.comparison.tickers.map((item) => (
         <RankCard key={item.ticker} item={item} />
       ))}
 
-      {comparison?.narrative && (
-        <View style={styles.narrativeBox}>
-          <Text style={styles.narrativeTitle}>AI Analysis</Text>
-          <Text style={styles.narrativeText}>{comparison.narrative}</Text>
+      {/* AI Narrative */}
+      {comparison && (
+        <>
+          {!comparison.narrative && !narrativeLoading && (
+            <Pressable
+              style={styles.narrativeButton}
+              onPress={() => fetchNarrative(comparison)}
+            >
+              <Text style={styles.narrativeButtonText}>Generate AI Narrative</Text>
+            </Pressable>
+          )}
+
+          {narrativeLoading && (
+            <View style={styles.narrativeLoading}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.narrativeLoadingText}>Generating AI narrative...</Text>
+            </View>
+          )}
+
+          {comparison.narrative && (
+            <View style={styles.narrativeBox}>
+              <View style={styles.narrativeHeader}>
+                <Text style={styles.narrativeTitle}>AI Analysis</Text>
+                <Pressable
+                  style={styles.regenerateBtn}
+                  onPress={() => fetchNarrative(comparison)}
+                  disabled={narrativeLoading}
+                >
+                  <Text style={styles.regenerateText}>Regenerate</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.narrativeText}>{comparison.narrative}</Text>
+            </View>
+          )}
+        </>
+      )}
+
+      {/* Failed tickers */}
+      {comparison?.failed && comparison.failed.length > 0 && (
+        <View style={styles.failedBox}>
+          <Text style={styles.failedTitle}>Failed</Text>
+          {comparison.failed.map((f) => (
+            <Text key={f.ticker} style={styles.failedText}>
+              {f.ticker}: {f.error}
+            </Text>
+          ))}
         </View>
       )}
     </ScrollView>
@@ -206,6 +297,26 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontSize: fontSize.sm,
   },
+  bestPickBanner: {
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.3)',
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  bestPickLabel: {
+    fontSize: fontSize.xs,
+    color: colors.green,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  bestPickTicker: {
+    fontSize: fontSize.xxl,
+    fontWeight: '700',
+    color: colors.green,
+  },
   rankCard: {
     backgroundColor: colors.surface,
     borderRadius: 12,
@@ -257,11 +368,48 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
+  scoreBreakdown: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   verdict: {
     fontSize: fontSize.sm,
     color: colors.textMuted,
     marginTop: spacing.sm,
     fontStyle: 'italic',
+  },
+  narrativeButton: {
+    height: 48,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.accent,
+    marginBottom: spacing.md,
+  },
+  narrativeButtonText: {
+    color: colors.accent,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  narrativeLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  narrativeLoadingText: {
+    color: colors.textMuted,
+    fontSize: fontSize.sm,
   },
   narrativeBox: {
     backgroundColor: colors.surface,
@@ -271,15 +419,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accent,
   },
+  narrativeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
   narrativeTitle: {
     fontSize: fontSize.lg,
     fontWeight: '700',
     color: colors.accent,
-    marginBottom: spacing.md,
+  },
+  regenerateBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceLight,
+  },
+  regenerateText: {
+    fontSize: fontSize.xs,
+    color: colors.accent,
+    fontWeight: '600',
   },
   narrativeText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  failedBox: {
+    backgroundColor: '#3b1818',
+    borderRadius: 8,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  failedTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.red,
+    marginBottom: spacing.xs,
+  },
+  failedText: {
+    fontSize: fontSize.xs,
+    color: colors.red,
   },
 });
