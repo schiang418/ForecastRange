@@ -8,7 +8,7 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
+      "distribution": "store",
       "ios": {
         "simulator": false
       }
@@ -16,6 +16,13 @@
     "production": {}
   },
   "submit": {
+    "preview": {
+      "ios": {
+        "appleId": "samuel_chiang@msn.com",
+        "ascAppId": "6760542065",
+        "appleTeamId": "B3VH39RT3Q"
+      }
+    },
     "production": {
       "ios": {
         "appleId": "samuel_chiang@msn.com",
