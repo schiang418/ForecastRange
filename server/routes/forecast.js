@@ -111,30 +111,6 @@ router.post('/', async (req, res) => {
       result.ivDbError = ivDbError;
     }
 
-    // Compute credit spread pricing
-    // The initial optionsChain (250 contracts) is ATM-focused.
-    // For OTM credit spreads we need more data — fetch the full chain with pagination.
-    if (result.horizons) {
-      try {
-        // Fetch full options chain (all expirations, all types) with pagination
-        const fullChain = await fetchOptionsForExpiration(cleanTicker).catch(err => {
-          console.warn(`[forecast] Full options chain fetch failed for ${cleanTicker}: ${err.message}`);
-          return optionsChain || [];
-        });
-        const chainToUse = fullChain && fullChain.length > 0 ? fullChain : (optionsChain || []);
-        console.log(`[forecast] ${cleanTicker}: ${chainToUse.length} total option contracts for credit spreads`);
-
-        if (chainToUse.length > 0) {
-          result.creditSpreadPricing = await computeCreditSpreadPricing(
-            chainToUse, result.horizons, spot, cleanTicker, getOptionSnapshot, buildOptionTicker
-          );
-          console.log(`[forecast] ${cleanTicker}: credit spread pricing computed`);
-        }
-      } catch (err) {
-        console.warn(`[forecast] Credit spread pricing failed for ${cleanTicker}: ${err.message}`);
-      }
-    }
-
     res.json(result);
   } catch (err) {
     console.error('[forecast] Error:', err);
@@ -143,6 +119,56 @@ router.post('/', async (req, res) => {
       return res.status(429).json({ error: 'Rate limit exceeded. Please try again in a moment.' });
     }
 
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/forecast/credit-spreads
+ * Body: { ticker: string, horizons: ForecastHorizon[], spot: number }
+ *
+ * On-demand credit spread pricing — fetches full options chain and
+ * individual contract snapshots for accurate OTM pricing.
+ */
+router.post('/credit-spreads', async (req, res) => {
+  try {
+    const { ticker, horizons, spot } = req.body;
+
+    if (!ticker || !horizons || !spot) {
+      return res.status(400).json({ error: 'ticker, horizons, and spot are required' });
+    }
+
+    const cleanTicker = ticker.toUpperCase().replace(/[^A-Z0-9.]/g, '').slice(0, 10);
+    console.log(`[credit-spreads] Fetching for ${cleanTicker}, spot=${spot}`);
+
+    // Fetch full options chain with pagination for strike discovery
+    const fullChain = await fetchOptionsForExpiration(cleanTicker).catch(err => {
+      console.warn(`[credit-spreads] Full chain fetch failed: ${err.message}`);
+      return [];
+    });
+
+    // Fall back to basic chain if full fetch fails
+    let chainToUse = fullChain;
+    if (!chainToUse || chainToUse.length === 0) {
+      chainToUse = await fetchOptionsChain(cleanTicker).catch(() => []);
+    }
+
+    console.log(`[credit-spreads] ${cleanTicker}: ${chainToUse.length} contracts`);
+
+    if (chainToUse.length === 0) {
+      return res.status(404).json({ error: `No options data for ${cleanTicker}` });
+    }
+
+    const result = await computeCreditSpreadPricing(
+      chainToUse, horizons, spot, cleanTicker, getOptionSnapshot, buildOptionTicker
+    );
+
+    res.json(result);
+  } catch (err) {
+    console.error('[credit-spreads] Error:', err);
+    if (err.message?.includes('429') || err.message?.includes('rate limit')) {
+      return res.status(429).json({ error: 'Rate limit exceeded. Please try again.' });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
