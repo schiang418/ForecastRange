@@ -30,6 +30,7 @@
       },
       "package": "com.forecastrange.app"
     },
+    "platforms": ["ios", "android"],
     "plugins": [
       "expo-apple-authentication",
       "expo-secure-store"
