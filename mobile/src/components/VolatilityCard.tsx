@@ -14,11 +14,6 @@ function regimeColor(regime: string): string {
   return colors.red; // Extreme
 }
 
-function pctFormat(v: number | null): string {
-  if (v === null) return '—';
-  return `${(v * 100).toFixed(1)}%`;
-}
-
 function numFormat(v: number | null, decimals = 2): string {
   if (v === null) return '—';
   return v.toFixed(decimals);
@@ -38,12 +33,14 @@ export default function VolatilityCard({ metrics }: VolatilityCardProps) {
 
       <View style={styles.row}>
         <Text style={styles.label}>Current IV</Text>
-        <Text style={styles.value}>{pctFormat(metrics.currentIV)}</Text>
+        <Text style={styles.value}>
+          {metrics.currentIVPct != null ? `${metrics.currentIVPct.toFixed(1)}%` : '—'}
+        </Text>
       </View>
 
       <View style={styles.row}>
         <Text style={styles.label}>RV (20d)</Text>
-        <Text style={styles.value}>{pctFormat(metrics.rv20Annualized)}</Text>
+        <Text style={styles.value}>{metrics.rv20AnnualizedPct.toFixed(1)}%</Text>
       </View>
 
       <View style={styles.row}>
@@ -56,7 +53,7 @@ export default function VolatilityCard({ metrics }: VolatilityCardProps) {
         <Text style={[styles.value, {
           color: metrics.volPremium !== null && metrics.volPremium > 0 ? colors.green : colors.red
         }]}>
-          {metrics.volPremium !== null ? `${(metrics.volPremium * 100).toFixed(1)}pp` : '—'}
+          {metrics.volPremium !== null ? `${metrics.volPremium.toFixed(1)}pp` : '—'}
         </Text>
       </View>
 
