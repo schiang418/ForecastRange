@@ -30,7 +30,17 @@ function formatTargetDate(dateStr: string | null): string {
 export default function ForecastTable({ horizons, spot }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-sm table-fixed">
+        <colgroup>
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '17%' }} />
+          <col style={{ width: '17%' }} />
+          <col style={{ width: '17%' }} />
+          <col style={{ width: '17%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '3%' }} />
+        </colgroup>
         <thead>
           <tr className="border-b border-edge text-dim text-left">
             <th className="py-3 px-4 font-medium cursor-help" title="Target expiration date and number of calendar days until that date. Each horizon aligns to the next weekly options expiry (Friday).">Horizon</th>

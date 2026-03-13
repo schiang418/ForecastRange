@@ -270,4 +270,83 @@ async function fetchSplits(ticker, fromDate, toDate) {
   }));
 }
 
-module.exports = { fetchDailyBars, fetchOptionsChain, extractAtmIV, extractAtmStraddle, fetchDividends, fetchSplits, sleep };
+/**
+ * Fetch options chain snapshot filtered by expiration date and contract type.
+ * Paginates to get all results for the given filters.
+ * Returns array of option contract snapshots.
+ */
+async function fetchOptionsForExpiration(ticker, expirationDate, contractType) {
+  const apiKey = getApiKey();
+  let allResults = [];
+  let nextUrl = null;
+  const params = new URLSearchParams({ apiKey, limit: '250' });
+  if (expirationDate) params.set('expiration_date', expirationDate);
+  if (contractType) params.set('contract_type', contractType);
+
+  let url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(ticker)}?${params.toString()}`;
+
+  while (url) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      if (res.status === 404 || res.status === 403) return [];
+      const text = await res.text();
+      throw new Error(`Polygon options API error for ${ticker}: ${res.status} ${text}`);
+    }
+    const data = await res.json();
+    if (data.status === 'ERROR') return allResults;
+    allResults = allResults.concat(data.results || []);
+    nextUrl = data.next_url;
+    url = nextUrl ? `${nextUrl}&apiKey=${apiKey}` : null;
+  }
+  return allResults;
+}
+
+/**
+ * Find the mid price for a specific option contract from a list of contracts.
+ * Returns { strike, mid, bid, ask, iv, volume, openInterest } or null.
+ */
+function findContractPrice(contracts, targetStrike, contractType) {
+  // Find exact match or closest strike
+  const matching = contracts.filter(c =>
+    c.details?.contract_type === contractType &&
+    c.details?.strike_price === targetStrike
+  );
+
+  if (matching.length === 0) return null;
+
+  const c = matching[0];
+  const bid = c.last_quote?.bid ?? 0;
+  const ask = c.last_quote?.ask ?? 0;
+  const mid = c.last_quote?.midpoint ?? ((bid + ask) / 2);
+
+  return {
+    strike: targetStrike,
+    mid: Math.round(mid * 100) / 100,
+    bid: Math.round(bid * 100) / 100,
+    ask: Math.round(ask * 100) / 100,
+    iv: c.implied_volatility ?? null,
+    volume: c.day?.volume ?? 0,
+    openInterest: c.open_interest ?? 0,
+  };
+}
+
+/**
+ * Round a price to the nearest standard option strike.
+ * Options typically have strikes at $1, $2.50, $5, or $10 intervals.
+ */
+function roundToStrike(price, direction = 'down') {
+  // Determine strike interval based on price level
+  let interval;
+  if (price < 25) interval = 1;
+  else if (price < 100) interval = 5;
+  else if (price < 500) interval = 5;
+  else interval = 5;
+
+  if (direction === 'down') {
+    return Math.floor(price / interval) * interval;
+  } else {
+    return Math.ceil(price / interval) * interval;
+  }
+}
+
+module.exports = { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV, extractAtmStraddle, fetchDividends, fetchSplits, findContractPrice, roundToStrike, sleep };
