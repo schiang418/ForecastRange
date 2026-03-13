@@ -192,45 +192,47 @@ export default function PriceHistoryChart({ ticker }: Props) {
       <div className="flex items-start justify-between mb-4 gap-4">
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-medium text-dim mb-1">Price History</h3>
-          <div className="h-[36px] overflow-hidden">
-            {hoveredBar ? (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs font-mono">
-                <span className="text-white font-medium font-sans">{formatDateFull(hoveredBar.date)}</span>
-                <span className="text-dim">O <span className="text-white">{hoveredBar.open.toFixed(2)}</span></span>
-                <span className="text-dim">H <span className="text-white">{hoveredBar.high.toFixed(2)}</span></span>
-                <span className="text-dim">L <span className="text-white">{hoveredBar.low.toFixed(2)}</span></span>
-                <span className="text-dim">C{' '}
-                  <span style={{ color: hoveredBar.close >= hoveredBar.open ? '#26a69a' : '#ef5350' }}>
-                    {hoveredBar.close.toFixed(2)} ({hoveredBar.close >= hoveredBar.open ? '+' : ''}{((hoveredBar.close - hoveredBar.open) / hoveredBar.open * 100).toFixed(2)}%)
-                  </span>
-                </span>
-                {hoveredBar.sma20 != null && (
-                  <span><span className="text-[#f59e0b]">SMA20</span> <span className="text-white">{hoveredBar.sma20.toFixed(2)}</span></span>
-                )}
-                {hoveredBar.sma50 != null && (
-                  <span><span className="text-[#a855f7]">SMA50</span> <span className="text-white">{hoveredBar.sma50.toFixed(2)}</span></span>
-                )}
-                {hoveredBar.sma200 != null && (
-                  <span><span className="text-[#06b6d4]">SMA200</span> <span className="text-white">{hoveredBar.sma200.toFixed(2)}</span></span>
-                )}
-                {hoveredBar.bbUpper != null && (
-                  <>
-                    <span><span className="text-[#4f8ff7]">BB</span> <span className="text-white">{hoveredBar.bbLower!.toFixed(2)}</span><span className="text-dim"> — </span><span className="text-white">{hoveredBar.bbUpper.toFixed(2)}</span></span>
-                    <span><span className="text-[#ef4444]/70">Basis</span> <span className="text-white">{hoveredBar.bbMiddle!.toFixed(2)}</span></span>
-                  </>
-                )}
-                {hoveredBar.rsi14 != null && (
-                  <span><span className="text-[#eab308]">RSI</span>{' '}
-                    <span style={{ color: hoveredBar.rsi14 >= 70 ? '#ef5350' : hoveredBar.rsi14 <= 30 ? '#26a69a' : '#e1e4ea' }}>
-                      {hoveredBar.rsi14.toFixed(1)}
+          <div className="relative" style={{ height: 36 }}>
+            <div className="absolute inset-0 overflow-hidden">
+              {hoveredBar ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs font-mono">
+                  <span className="text-white font-medium font-sans">{formatDateFull(hoveredBar.date)}</span>
+                  <span className="text-dim">O <span className="text-white">{hoveredBar.open.toFixed(2)}</span></span>
+                  <span className="text-dim">H <span className="text-white">{hoveredBar.high.toFixed(2)}</span></span>
+                  <span className="text-dim">L <span className="text-white">{hoveredBar.low.toFixed(2)}</span></span>
+                  <span className="text-dim">C{' '}
+                    <span style={{ color: hoveredBar.close >= hoveredBar.open ? '#26a69a' : '#ef5350' }}>
+                      {hoveredBar.close.toFixed(2)} ({hoveredBar.close >= hoveredBar.open ? '+' : ''}{((hoveredBar.close - hoveredBar.open) / hoveredBar.open * 100).toFixed(2)}%)
                     </span>
                   </span>
-                )}
-                <span className="text-dim">Vol <span className="text-white">{(hoveredBar.volume / 1e6).toFixed(1)}M</span></span>
-              </div>
-            ) : (
-              <div className="text-xs text-dim/50">Hover over chart for details</div>
-            )}
+                  {hoveredBar.sma20 != null && (
+                    <span><span className="text-[#f59e0b]">SMA20</span> <span className="text-white">{hoveredBar.sma20.toFixed(2)}</span></span>
+                  )}
+                  {hoveredBar.sma50 != null && (
+                    <span><span className="text-[#a855f7]">SMA50</span> <span className="text-white">{hoveredBar.sma50.toFixed(2)}</span></span>
+                  )}
+                  {hoveredBar.sma200 != null && (
+                    <span><span className="text-[#06b6d4]">SMA200</span> <span className="text-white">{hoveredBar.sma200.toFixed(2)}</span></span>
+                  )}
+                  {hoveredBar.bbUpper != null && (
+                    <>
+                      <span><span className="text-[#4f8ff7]">BB</span> <span className="text-white">{hoveredBar.bbLower!.toFixed(2)}</span><span className="text-dim"> — </span><span className="text-white">{hoveredBar.bbUpper.toFixed(2)}</span></span>
+                      <span><span className="text-[#ef4444]/70">Basis</span> <span className="text-white">{hoveredBar.bbMiddle!.toFixed(2)}</span></span>
+                    </>
+                  )}
+                  {hoveredBar.rsi14 != null && (
+                    <span><span className="text-[#eab308]">RSI</span>{' '}
+                      <span style={{ color: hoveredBar.rsi14 >= 70 ? '#ef5350' : hoveredBar.rsi14 <= 30 ? '#26a69a' : '#e1e4ea' }}>
+                        {hoveredBar.rsi14.toFixed(1)}
+                      </span>
+                    </span>
+                  )}
+                  <span className="text-dim">Vol <span className="text-white">{(hoveredBar.volume / 1e6).toFixed(1)}M</span></span>
+                </div>
+              ) : (
+                <div className="text-xs text-dim/50">Hover over chart for details</div>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex gap-1 shrink-0 items-center">
