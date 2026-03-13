@@ -30,6 +30,15 @@ function computeCreditSpreadPricing(optionsChain, horizons, spot) {
   // Get all available expirations sorted
   const availableExpirations = Object.keys(contractIndex).sort();
 
+  // Log available data for debugging
+  for (const exp of availableExpirations.slice(0, 4)) {
+    const putCount = Object.keys(contractIndex[exp].put || {}).length;
+    const callCount = Object.keys(contractIndex[exp].call || {}).length;
+    const putStrikesArr = Object.keys(contractIndex[exp].put || {}).map(Number).sort((a, b) => a - b);
+    const callStrikesArr = Object.keys(contractIndex[exp].call || {}).map(Number).sort((a, b) => a - b);
+    console.log(`[credit-spreads] exp=${exp}: ${putCount} puts (${putStrikesArr[0]}-${putStrikesArr[putStrikesArr.length-1]}), ${callCount} calls (${callStrikesArr[0]}-${callStrikesArr[callStrikesArr.length-1]}), spot=${spot}`);
+  }
+
   const putSpreads = [];
   const callSpreads = [];
 
