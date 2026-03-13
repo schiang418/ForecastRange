@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, X, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Check, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { VolatilityMetrics, fetchEvents, UpcomingEvent } from '../api';
 
 interface Props {
@@ -89,14 +89,16 @@ export default function PremiumChecklist({ volatilityMetrics: vm, ticker }: Prop
             {sellCount}/4
           </span>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {sellChecks.map((check, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs">
-              {check.met ? (
-                <Check className="w-3.5 h-3.5 text-green-400 shrink-0" />
-              ) : (
-                <X className="w-3.5 h-3.5 text-dim/40 shrink-0" />
-              )}
+            <div key={i} className="flex items-center gap-2.5 text-xs">
+              <span className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border ${
+                check.met
+                  ? 'bg-green-400/20 border-green-400'
+                  : 'border-[#3a3f4b] bg-transparent'
+              }`}>
+                {check.met && <Check className="w-3 h-3 text-green-400" strokeWidth={3} />}
+              </span>
               <span className={check.met ? 'text-white' : 'text-dim/60'}>
                 {check.label}
               </span>
@@ -122,14 +124,16 @@ export default function PremiumChecklist({ volatilityMetrics: vm, ticker }: Prop
             {avoidCount}/4
           </span>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {avoidChecks.map((check, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs">
-              {check.met ? (
-                <Check className="w-3.5 h-3.5 text-red-400 shrink-0" />
-              ) : (
-                <X className="w-3.5 h-3.5 text-dim/40 shrink-0" />
-              )}
+            <div key={i} className="flex items-center gap-2.5 text-xs">
+              <span className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border ${
+                check.met
+                  ? 'bg-red-400/20 border-red-400'
+                  : 'border-[#3a3f4b] bg-transparent'
+              }`}>
+                {check.met && <Check className="w-3 h-3 text-red-400" strokeWidth={3} />}
+              </span>
               <span className={check.met ? 'text-white' : 'text-dim/60'}>
                 {check.label}
               </span>
