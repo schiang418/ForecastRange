@@ -1,0 +1,27 @@
+{
+  "cli": {
+    "version": ">= 3.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "store",
+      "ios": {
+        "simulator": false
+      }
+    },
+    "production": {}
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "samuel_chiang@msn.com",
+        "ascAppId": "6760542065",
+        "appleTeamId": "B3VH39RT3Q"
+      }
+    }
+  }
+}
