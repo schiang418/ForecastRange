@@ -4,6 +4,7 @@ const { computeForecast } = require('../../src/forecast');
 const { upsertIV, getIVHistory } = require('../ivHistory');
 const { autoBackfillIfNeeded } = require('../ivBackfill');
 const { getEasternDate, ensureIVHistoryTable } = require('../db');
+const { computeCreditSpreadPricing } = require('../../src/creditSpreadPricing');
 
 const router = express.Router();
 
@@ -109,6 +110,17 @@ router.post('/', async (req, res) => {
     if (ivDbError) {
       result.ivDbError = ivDbError;
     }
+
+    // Compute credit spread pricing using the same options chain
+    if (optionsChain && optionsChain.length > 0 && result.horizons) {
+      try {
+        result.creditSpreadPricing = computeCreditSpreadPricing(optionsChain, result.horizons, spot);
+        console.log(`[forecast] ${cleanTicker}: credit spread pricing computed`);
+      } catch (err) {
+        console.warn(`[forecast] Credit spread pricing failed for ${cleanTicker}: ${err.message}`);
+      }
+    }
+
     res.json(result);
   } catch (err) {
     console.error('[forecast] Error:', err);
