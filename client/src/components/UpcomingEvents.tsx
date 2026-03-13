@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, DollarSign, Scissors, Landmark } from 'lucide-react';
+import { Calendar, DollarSign, Scissors, Landmark, Megaphone } from 'lucide-react';
 import { fetchEvents, UpcomingEvent } from '../api';
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
 }
 
 const EVENT_STYLES: Record<string, { icon: typeof Calendar; color: string; bg: string }> = {
+  earnings: { icon: Megaphone, color: 'text-red-400', bg: 'bg-red-400/10 border-red-400/20' },
   fomc: { icon: Landmark, color: 'text-amber-400', bg: 'bg-amber-400/10 border-amber-400/20' },
   dividend: { icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
   split: { icon: Scissors, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },

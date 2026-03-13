@@ -26,10 +26,41 @@ function addBusinessDays(dateStr, days) {
 }
 
 /**
+ * Fetch upcoming earnings date from Finnhub.
+ * Returns array of { date, hour, epsEstimate, revenueEstimate } or empty array.
+ */
+async function fetchEarnings(ticker, fromDate, toDate) {
+  const apiKey = process.env.FINNHUB_API_KEY;
+  if (!apiKey) return [];
+
+  const url = `https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${fromDate}&to=${toDate}&token=${apiKey}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const entries = data.earningsCalendar || [];
+
+    return entries
+      .filter(e => e.symbol === ticker && e.date >= fromDate && e.date <= toDate)
+      .map(e => ({
+        date: e.date,
+        hour: e.hour || null,
+        epsEstimate: e.epsEstimate ?? null,
+        revenueEstimate: e.revenueEstimate ?? null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * POST /api/events
  * Body: { ticker: string }
  *
- * Returns upcoming key events within the next ~30 calendar days:
+ * Returns upcoming key events within the next ~20 trading days:
+ * - Earnings (from Finnhub)
  * - FOMC meetings (hardcoded schedule)
  * - Dividends (from Polygon)
  * - Stock splits (from Polygon)
@@ -60,11 +91,26 @@ router.post('/', async (req, res) => {
         description: 'Federal Reserve interest rate decision',
       }));
 
-    // Fetch dividends and splits in parallel
-    const [dividends, splits] = await Promise.all([
+    // Fetch earnings, dividends, and splits in parallel
+    const [earnings, dividends, splits] = await Promise.all([
+      fetchEarnings(cleanTicker, today, endDate),
       fetchDividends(cleanTicker, today, endDate).catch(() => []),
       fetchSplits(cleanTicker, today, endDate).catch(() => []),
     ]);
+
+    const earningsEvents = earnings.map(e => {
+      const hourLabel = e.hour === 'bmo' ? 'Before Open' : e.hour === 'amc' ? 'After Close' : '';
+      const parts = ['Earnings'];
+      if (hourLabel) parts.push(`(${hourLabel})`);
+      return {
+        type: 'earnings',
+        date: e.date,
+        label: parts.join(' '),
+        description: e.epsEstimate != null
+          ? `Est. EPS: $${e.epsEstimate.toFixed(2)}${e.revenueEstimate != null ? ` | Est. Rev: $${(e.revenueEstimate / 1e9).toFixed(2)}B` : ''}`
+          : undefined,
+      };
+    });
 
     const dividendEvents = dividends.map(d => ({
       type: 'dividend',
@@ -81,7 +127,7 @@ router.post('/', async (req, res) => {
     }));
 
     // Combine and sort by date
-    const events = [...fomcEvents, ...dividendEvents, ...splitEvents]
+    const events = [...earningsEvents, ...fomcEvents, ...dividendEvents, ...splitEvents]
       .sort((a, b) => a.date.localeCompare(b.date));
 
     res.json({ ticker: cleanTicker, events, fromDate: today, toDate: endDate });

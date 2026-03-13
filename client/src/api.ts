@@ -309,7 +309,7 @@ export async function fetchChart(ticker: string, period: ChartPeriod = '6m'): Pr
 // --- Events types ---
 
 export interface UpcomingEvent {
-  type: 'fomc' | 'dividend' | 'split';
+  type: 'fomc' | 'dividend' | 'split' | 'earnings';
   date: string;
   label: string;
   description?: string;
