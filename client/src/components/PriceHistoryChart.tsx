@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer,
+  ResponsiveContainer, Customized,
 } from 'recharts';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { fetchChart, ChartBar, ChartPeriod } from '../api';
@@ -256,13 +256,68 @@ export default function PriceHistoryChart({ ticker }: Props) {
               isAnimationActive={false}
             />
 
-            {/* Price line (close) colored by direction */}
+            {/* Candlesticks rendered via Customized SVG */}
+            <Customized
+              component={(props: any) => {
+                const { xAxisMap, yAxisMap, formattedGraphicalItems } = props;
+                if (!xAxisMap || !yAxisMap) return null;
+                const xAxis = Object.values(xAxisMap)[0] as any;
+                const yAxis = Object.values(yAxisMap)[0] as any;
+                if (!xAxis?.scale || !yAxis?.scale) return null;
+
+                const bandWidth = xAxis.bandSize || (xAxis.width / chartData.length);
+                const candleWidth = Math.max(1, Math.min(8, bandWidth * 0.6));
+
+                return (
+                  <g>
+                    {chartData.map((d, i) => {
+                      const x = xAxis.scale(i) + (bandWidth - candleWidth) / 2;
+                      const yHigh = yAxis.scale(d.high);
+                      const yLow = yAxis.scale(d.low);
+                      const yOpen = yAxis.scale(d.open);
+                      const yClose = yAxis.scale(d.close);
+                      const isUp = d.close >= d.open;
+                      const color = isUp ? '#22c55e' : '#ef4444';
+                      const bodyTop = Math.min(yOpen, yClose);
+                      const bodyHeight = Math.max(1, Math.abs(yOpen - yClose));
+                      const wickX = x + candleWidth / 2;
+
+                      return (
+                        <g key={i}>
+                          {/* Wick (high to low) */}
+                          <line
+                            x1={wickX}
+                            y1={yHigh}
+                            x2={wickX}
+                            y2={yLow}
+                            stroke={color}
+                            strokeWidth={1}
+                          />
+                          {/* Body (open to close) */}
+                          <rect
+                            x={x}
+                            y={bodyTop}
+                            width={candleWidth}
+                            height={bodyHeight}
+                            fill={isUp ? color : color}
+                            stroke={color}
+                            strokeWidth={0.5}
+                          />
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              }}
+            />
+            {/* Hidden close line for tooltip tracking */}
             <Line
               type="monotone"
               dataKey="close"
-              stroke="#e1e4ea"
-              strokeWidth={1.5}
+              stroke="transparent"
+              strokeWidth={0}
               dot={false}
+              activeDot={false}
               isAnimationActive={false}
             />
 
@@ -292,7 +347,11 @@ export default function PriceHistoryChart({ ticker }: Props) {
       {/* Legend */}
       <div className="flex justify-center gap-5 mt-3 text-xs text-dim flex-wrap">
         <span className="flex items-center gap-1.5">
-          <span className="w-4 h-0.5 bg-[#e1e4ea] inline-block" /> Close
+          <span className="inline-flex items-center gap-0.5">
+            <span className="w-1.5 h-3 bg-[#22c55e] inline-block rounded-sm" />
+            <span className="w-1.5 h-3 bg-[#ef4444] inline-block rounded-sm" />
+          </span>
+          Candlestick
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-4 h-0.5 bg-[#f59e0b] inline-block" /> SMA 20
