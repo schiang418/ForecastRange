@@ -337,6 +337,60 @@ export async function fetchEvents(ticker: string): Promise<EventsResult> {
   return res.json();
 }
 
+// --- Credit Spread Pricing types ---
+
+export interface CreditSpreadCell {
+  sellStrike: number;
+  buyStrike: number;
+  sellMid: number;
+  buyMid: number;
+  premium: number;
+  premiumPerContract: number;  // in dollars (premium * 100)
+  maxLoss: number;
+  sellIV: number | null;
+  buyIV: number | null;
+  adjusted?: boolean;  // true if strikes were adjusted from ideal
+}
+
+export interface CreditSpreadRow {
+  horizon: string;
+  horizonWeeks: number;
+  horizonDays: number;
+  targetDate: string | null;
+  expectedMove: number;
+  expectedMovePct: number;
+  ranges: {
+    range50?: CreditSpreadCell | null;
+    range68?: CreditSpreadCell | null;
+    range90?: CreditSpreadCell | null;
+  };
+}
+
+export interface CreditSpreadPricingResult {
+  putSpreads: CreditSpreadRow[];
+  callSpreads: CreditSpreadRow[];
+  spreadWidth: number;
+}
+
+export async function fetchCreditSpreadPricing(forecast: ForecastResult): Promise<CreditSpreadPricingResult> {
+  const res = await fetch('/api/forecast/credit-spread-pricing', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ticker: forecast.ticker,
+      spot: forecast.spot,
+      horizons: forecast.horizons,
+    }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to fetch credit spread pricing (${res.status})`);
+  }
+
+  return res.json();
+}
+
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
   const res = await fetch('/api/forecast', {
     method: 'POST',
