@@ -399,6 +399,18 @@ export default function ForecastSection() {
             </>
           )}
 
+          {/* Credit Spread Debug Info (temporary) */}
+          {result.creditSpreadPricing && (result.creditSpreadPricing as any)._debug && (
+            <div className="bg-surface-card border border-edge rounded-lg p-4">
+              <details>
+                <summary className="text-xs text-dim cursor-pointer">Credit Spread Debug Info</summary>
+                <pre className="text-xs text-dim mt-2 overflow-x-auto whitespace-pre-wrap">
+                  {JSON.stringify((result.creditSpreadPricing as any)._debug, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
+
           {/* Calculation Details Toggle + Download */}
           <div className="flex gap-3">
             <button
