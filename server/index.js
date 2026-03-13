@@ -5,6 +5,9 @@ const path = require('path');
 const forecastRouter = require('./routes/forecast');
 const compareRouter = require('./routes/compare');
 const spreadsRouter = require('./routes/spreads');
+const chartRouter = require('./routes/chart');
+const eventsRouter = require('./routes/events');
+const creditSpreadsRouter = require('./routes/creditSpreads');
 const authRouter = require('./routes/auth');
 const watchlistRouter = require('./routes/watchlist');
 const { optionalAuth } = require('./middleware/auth');
@@ -21,6 +24,9 @@ app.use('/api/watchlist', watchlistRouter);
 app.use('/api/forecast', optionalAuth, forecastRouter);
 app.use('/api/compare', optionalAuth, compareRouter);
 app.use('/api/forecast/spreads', optionalAuth, spreadsRouter);
+app.use('/api/chart', chartRouter);
+app.use('/api/events', eventsRouter);
+app.use('/api/forecast/credit-spread-pricing', creditSpreadsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
