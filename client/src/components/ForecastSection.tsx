@@ -5,6 +5,7 @@ import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
 import PriceHistoryChart from './PriceHistoryChart';
+import UpcomingEvents from './UpcomingEvents';
 import { downloadForecastMarkdown } from '../exportMarkdown';
 
 type ViewTab = 'all' | '1' | '2' | '3' | '4';
@@ -341,6 +342,9 @@ export default function ForecastSection() {
 
           {/* Price History Chart */}
           <PriceHistoryChart ticker={result.ticker} />
+
+          {/* Upcoming Events */}
+          <UpcomingEvents ticker={result.ticker} />
 
           {/* Cone Chart */}
           <div className="bg-surface-card border border-edge rounded-lg p-5">

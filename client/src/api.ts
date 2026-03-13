@@ -306,6 +306,37 @@ export async function fetchChart(ticker: string, period: ChartPeriod = '6m'): Pr
   return res.json();
 }
 
+// --- Events types ---
+
+export interface UpcomingEvent {
+  type: 'fomc' | 'dividend' | 'split' | 'earnings';
+  date: string;
+  label: string;
+  description?: string;
+}
+
+export interface EventsResult {
+  ticker: string;
+  events: UpcomingEvent[];
+  fromDate: string;
+  toDate: string;
+}
+
+export async function fetchEvents(ticker: string): Promise<EventsResult> {
+  const res = await fetch('/api/events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to fetch events (${res.status})`);
+  }
+
+  return res.json();
+}
+
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
   const res = await fetch('/api/forecast', {
     method: 'POST',

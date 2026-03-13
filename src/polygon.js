@@ -212,4 +212,62 @@ function extractAtmStraddle(optionsChain, spotPrice) {
   return results;
 }
 
-module.exports = { fetchDailyBars, fetchOptionsChain, extractAtmIV, extractAtmStraddle, sleep };
+/**
+ * Fetch upcoming dividends for a ticker within a date range.
+ * Returns array of { exDividendDate, payDate, cashAmount, frequency, dividendType }.
+ */
+async function fetchDividends(ticker, fromDate, toDate) {
+  const apiKey = getApiKey();
+  const params = new URLSearchParams({
+    apiKey,
+    ticker,
+    'ex_dividend_date.gte': fromDate,
+    'ex_dividend_date.lte': toDate,
+    limit: '50',
+    order: 'asc',
+    sort: 'ex_dividend_date',
+  });
+  const url = `${API_BASE}/v3/reference/dividends?${params.toString()}`;
+
+  const res = await fetch(url);
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  return (data.results || []).map(d => ({
+    exDividendDate: d.ex_dividend_date,
+    payDate: d.pay_date,
+    cashAmount: d.cash_amount,
+    frequency: d.frequency,
+    dividendType: d.dividend_type,
+  }));
+}
+
+/**
+ * Fetch upcoming stock splits for a ticker within a date range.
+ * Returns array of { executionDate, splitFrom, splitTo }.
+ */
+async function fetchSplits(ticker, fromDate, toDate) {
+  const apiKey = getApiKey();
+  const params = new URLSearchParams({
+    apiKey,
+    ticker,
+    'execution_date.gte': fromDate,
+    'execution_date.lte': toDate,
+    limit: '50',
+    order: 'asc',
+    sort: 'execution_date',
+  });
+  const url = `${API_BASE}/v3/reference/splits?${params.toString()}`;
+
+  const res = await fetch(url);
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  return (data.results || []).map(s => ({
+    executionDate: s.execution_date,
+    splitFrom: s.split_from,
+    splitTo: s.split_to,
+  }));
+}
+
+module.exports = { fetchDailyBars, fetchOptionsChain, extractAtmIV, extractAtmStraddle, fetchDividends, fetchSplits, sleep };
