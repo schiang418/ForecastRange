@@ -54,7 +54,7 @@ async function fetchDailyBars(ticker, fromDate, toDate) {
  * Filterable by strike_price, expiration_date, contract_type.
  */
 async function fetchOptionsChain(ticker, { expirationDate, contractType, strikePrice } = {}) {
-  const apiKey = getApiKey();
+  const apiKey = getOptionsApiKey();
   const params = new URLSearchParams({ apiKey, limit: '250' });
 
   if (expirationDate) params.set('expiration_date', expirationDate);
@@ -282,7 +282,7 @@ async function fetchSplits(ticker, fromDate, toDate) {
  * Returns array of option contract snapshots.
  */
 async function fetchOptionsForExpiration(ticker, expirationDate, contractType) {
-  const apiKey = getApiKey();
+  const apiKey = getOptionsApiKey();
   let allResults = [];
   let nextUrl = null;
   const params = new URLSearchParams({ apiKey, limit: '250' });
@@ -396,28 +396,62 @@ function buildOptionTicker(underlying, expirationDate, putCall, strike) {
 async function getOptionSnapshot(underlying, optionTicker) {
   const apiKey = getOptionsApiKey();
 
-  // Strategy 1: Individual snapshot endpoint
+  // Snapshot endpoint — extract price from multiple possible fields
   const snapUrl = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(underlying)}/${optionTicker}?apiKey=${apiKey}`;
   try {
     const res = await fetch(snapUrl);
     if (res.ok) {
       const data = await res.json();
       if (data.results) {
-        const result = data.results;
-        const quote = result.last_quote || {};
-        const trade = result.last_trade || {};
+        const r = data.results;
+        const quote = r.last_quote || {};
+        const trade = r.last_trade || {};
+        const day = r.day || {};
+
+        // Try multiple price sources in order of preference:
+        // 1. Bid/ask midpoint from last_quote
+        // 2. last_quote.midpoint
+        // 3. last_trade.price
+        // 4. day.vwap (available on plans without real-time quotes)
+        // 5. day.close
         const bid = quote.bid || 0;
         const ask = quote.ask || 0;
-        const midpoint = bid && ask ? (bid + ask) / 2 : (quote.midpoint || trade.price || 0);
+        let midpoint = 0;
+        let source = 'snapshot';
+
+        if (bid > 0 && ask > 0) {
+          midpoint = (bid + ask) / 2;
+          source = 'quote_midpoint';
+        } else if (quote.midpoint > 0) {
+          midpoint = quote.midpoint;
+          source = 'quote_midpoint';
+        } else if (trade.price > 0) {
+          midpoint = trade.price;
+          source = 'last_trade';
+        } else if (day.vwap > 0) {
+          midpoint = day.vwap;
+          source = 'day_vwap';
+        } else if (day.close > 0) {
+          midpoint = day.close;
+          source = 'day_close';
+        }
 
         if (midpoint > 0) {
-          return { bid, ask, midpoint, lastTrade: trade.price || 0, fmv: result.fair_market_value || 0, iv: result.implied_volatility || null, source: 'snapshot' };
+          return {
+            bid: bid || day.low || 0,
+            ask: ask || day.high || 0,
+            midpoint,
+            lastTrade: trade.price || day.close || 0,
+            fmv: r.fair_market_value || 0,
+            iv: r.implied_volatility || null,
+            source,
+          };
         }
       }
     }
   } catch (e) { /* fall through to prev close */ }
 
-  // Strategy 2: Previous day close (works on more API plans)
+  // Fallback: Previous day close
   await sleep(RATE_LIMIT_DELAY);
   const prevUrl = `${API_BASE}/v2/aggs/ticker/${optionTicker}/prev?adjusted=true&apiKey=${apiKey}`;
   try {
@@ -426,7 +460,6 @@ async function getOptionSnapshot(underlying, optionTicker) {
       const data = await res.json();
       if (data.results && data.results.length > 0) {
         const bar = data.results[0];
-        // Use VWAP if available, otherwise close, otherwise midpoint of high/low
         const price = bar.vw || bar.c || (bar.h && bar.l ? (bar.h + bar.l) / 2 : 0);
         if (price > 0) {
           return { bid: bar.l || 0, ask: bar.h || 0, midpoint: price, lastTrade: bar.c || 0, fmv: 0, iv: null, source: 'prev_close' };
@@ -435,7 +468,7 @@ async function getOptionSnapshot(underlying, optionTicker) {
     }
   } catch (e) { /* fall through */ }
 
-  console.warn(`[polygon] getOptionSnapshot ${optionTicker}: no price from snapshot or prev close`);
+  console.warn(`[polygon] getOptionSnapshot ${optionTicker}: no price from any source`);
   return null;
 }
 
