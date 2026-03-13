@@ -1,9 +1,15 @@
 const API_BASE = 'https://api.polygon.io';
+const RATE_LIMIT_DELAY = 200;
 
 function getApiKey() {
   const key = process.env.MASSIVE_STOCK_API_KEY;
   if (!key) throw new Error('MASSIVE_STOCK_API_KEY environment variable is not set');
   return key;
+}
+
+// OptionStrategy uses a separate API key for options endpoints (higher-tier plan with quotes)
+function getOptionsApiKey() {
+  return process.env.MASSIVE_API_KEY || getApiKey();
 }
 
 function sleep(ms) {
@@ -388,38 +394,49 @@ function buildOptionTicker(underlying, expirationDate, putCall, strike) {
  * @returns {{ bid, ask, midpoint, lastTrade, iv } | null}
  */
 async function getOptionSnapshot(underlying, optionTicker) {
-  const apiKey = getApiKey();
-  // Do NOT encodeURIComponent the optionTicker — Polygon expects literal "O:TSLA..." in the path
-  const url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(underlying)}/${optionTicker}?apiKey=${apiKey}`;
+  const apiKey = getOptionsApiKey();
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    console.warn(`[polygon] getOptionSnapshot ${optionTicker}: HTTP ${res.status}`);
-    return null;
-  }
+  // Strategy 1: Individual snapshot endpoint
+  const snapUrl = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(underlying)}/${optionTicker}?apiKey=${apiKey}`;
+  try {
+    const res = await fetch(snapUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results) {
+        const result = data.results;
+        const quote = result.last_quote || {};
+        const trade = result.last_trade || {};
+        const bid = quote.bid || 0;
+        const ask = quote.ask || 0;
+        const midpoint = bid && ask ? (bid + ask) / 2 : (quote.midpoint || trade.price || 0);
 
-  const data = await res.json();
-  if (!data.results) {
-    console.warn(`[polygon] getOptionSnapshot ${optionTicker}: no results in response`);
-    return null;
-  }
+        if (midpoint > 0) {
+          return { bid, ask, midpoint, lastTrade: trade.price || 0, fmv: result.fair_market_value || 0, iv: result.implied_volatility || null, source: 'snapshot' };
+        }
+      }
+    }
+  } catch (e) { /* fall through to prev close */ }
 
-  const result = data.results;
-  const quote = result.last_quote || {};
-  const trade = result.last_trade || {};
+  // Strategy 2: Previous day close (works on more API plans)
+  await sleep(RATE_LIMIT_DELAY);
+  const prevUrl = `${API_BASE}/v2/aggs/ticker/${optionTicker}/prev?adjusted=true&apiKey=${apiKey}`;
+  try {
+    const res = await fetch(prevUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const bar = data.results[0];
+        // Use VWAP if available, otherwise close, otherwise midpoint of high/low
+        const price = bar.vw || bar.c || (bar.h && bar.l ? (bar.h + bar.l) / 2 : 0);
+        if (price > 0) {
+          return { bid: bar.l || 0, ask: bar.h || 0, midpoint: price, lastTrade: bar.c || 0, fmv: 0, iv: null, source: 'prev_close' };
+        }
+      }
+    }
+  } catch (e) { /* fall through */ }
 
-  const bid = quote.bid || 0;
-  const ask = quote.ask || 0;
-  const midpoint = bid && ask ? (bid + ask) / 2 : trade.price || 0;
-
-  return {
-    bid,
-    ask,
-    midpoint,
-    lastTrade: trade.price || 0,
-    fmv: result.fair_market_value || 0,
-    iv: result.implied_volatility || null,
-  };
+  console.warn(`[polygon] getOptionSnapshot ${optionTicker}: no price from snapshot or prev close`);
+  return null;
 }
 
 module.exports = { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV, extractAtmStraddle, fetchDividends, fetchSplits, findContractPrice, roundToStrike, sleep, buildOptionTicker, getOptionSnapshot };
