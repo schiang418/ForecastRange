@@ -54,7 +54,7 @@ async function fetchDailyBars(ticker, fromDate, toDate) {
  * Filterable by strike_price, expiration_date, contract_type.
  */
 async function fetchOptionsChain(ticker, { expirationDate, contractType, strikePrice } = {}) {
-  const apiKey = getApiKey();
+  const apiKey = getOptionsApiKey();
   const params = new URLSearchParams({ apiKey, limit: '250' });
 
   if (expirationDate) params.set('expiration_date', expirationDate);
@@ -282,7 +282,7 @@ async function fetchSplits(ticker, fromDate, toDate) {
  * Returns array of option contract snapshots.
  */
 async function fetchOptionsForExpiration(ticker, expirationDate, contractType) {
-  const apiKey = getApiKey();
+  const apiKey = getOptionsApiKey();
   let allResults = [];
   let nextUrl = null;
   const params = new URLSearchParams({ apiKey, limit: '250' });
