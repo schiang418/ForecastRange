@@ -265,6 +265,45 @@ export async function fetchSpreadAnalysis(forecast: ForecastResult): Promise<str
   return data.analysis;
 }
 
+// --- Chart types ---
+
+export interface ChartBar {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  sma20: number | null;
+  sma50: number | null;
+  bbUpper: number | null;
+  bbMiddle: number | null;
+  bbLower: number | null;
+}
+
+export type ChartPeriod = '3m' | '6m' | '1y' | '2y';
+
+export interface ChartResult {
+  ticker: string;
+  period: string;
+  bars: ChartBar[];
+}
+
+export async function fetchChart(ticker: string, period: ChartPeriod = '6m'): Promise<ChartResult> {
+  const res = await fetch('/api/chart', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker, period }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to fetch chart data (${res.status})`);
+  }
+
+  return res.json();
+}
+
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
   const res = await fetch('/api/forecast', {
     method: 'POST',
