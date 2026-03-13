@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, TrendingUp, Loader2, AlertCircle, BarChart3, Download, Scissors } from 'lucide-react';
-import { fetchForecast, fetchSpreadAnalysis, ForecastResult } from '../api';
+import { fetchForecast, fetchSpreadAnalysis, fetchCreditSpreads, ForecastResult, CreditSpreadPricingResult } from '../api';
 import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
@@ -22,6 +22,9 @@ export default function ForecastSection() {
   const [spreadAnalysis, setSpreadAnalysis] = useState<string | null>(null);
   const [spreadLoading, setSpreadLoading] = useState(false);
   const [spreadError, setSpreadError] = useState<string | null>(null);
+  const [creditSpreads, setCreditSpreads] = useState<CreditSpreadPricingResult | null>(null);
+  const [creditSpreadsLoading, setCreditSpreadsLoading] = useState(false);
+  const [creditSpreadsError, setCreditSpreadsError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,6 +36,8 @@ export default function ForecastSection() {
     setResult(null);
     setSpreadAnalysis(null);
     setSpreadError(null);
+    setCreditSpreads(null);
+    setCreditSpreadsError(null);
 
     try {
       const data = await fetchForecast(cleanTicker);
@@ -56,6 +61,20 @@ export default function ForecastSection() {
       setSpreadError(err.message || 'Failed to generate spread analysis');
     } finally {
       setSpreadLoading(false);
+    }
+  };
+
+  const handleCreditSpreads = async () => {
+    if (!result) return;
+    setCreditSpreadsLoading(true);
+    setCreditSpreadsError(null);
+    try {
+      const data = await fetchCreditSpreads(result.ticker, result.horizons, result.spot);
+      setCreditSpreads(data);
+    } catch (err: any) {
+      setCreditSpreadsError(err.message || 'Failed to fetch credit spreads');
+    } finally {
+      setCreditSpreadsLoading(false);
     }
   };
 
@@ -373,42 +392,64 @@ export default function ForecastSection() {
             <ForecastTable horizons={filteredHorizons} spot={result.spot} />
           </div>
 
-          {/* Credit Spread Pricing Tables */}
-          {result.creditSpreadPricing && (
+          {/* Credit Spread Pricing - On Demand */}
+          {!creditSpreads && !creditSpreadsLoading && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCreditSpreads}
+                className="flex items-center gap-2 px-4 py-2 bg-surface-card border border-edge rounded-lg text-sm font-medium text-accent hover:bg-surface-hover transition-colors"
+              >
+                <Scissors size={16} />
+                Load Credit Spread Pricing
+              </button>
+              {creditSpreadsError && (
+                <span className="text-red-400 text-sm">{creditSpreadsError}</span>
+              )}
+            </div>
+          )}
+
+          {creditSpreadsLoading && (
+            <div className="bg-surface-card border border-edge rounded-lg p-6 flex items-center justify-center gap-3">
+              <Loader2 size={20} className="animate-spin text-accent" />
+              <span className="text-sm text-dim">Fetching credit spread pricing...</span>
+            </div>
+          )}
+
+          {creditSpreads && (
             <>
               <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
                 <CreditSpreadTable
                   rows={activeTab === 'all'
-                    ? result.creditSpreadPricing.putSpreads
-                    : result.creditSpreadPricing.putSpreads.filter(r => r.horizonWeeks === Number(activeTab))
+                    ? creditSpreads.putSpreads
+                    : creditSpreads.putSpreads.filter(r => r.horizonWeeks === Number(activeTab))
                   }
                   type="put"
-                  spreadWidth={result.creditSpreadPricing.spreadWidth}
+                  spreadWidth={creditSpreads.spreadWidth}
                 />
               </div>
               <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
                 <CreditSpreadTable
                   rows={activeTab === 'all'
-                    ? result.creditSpreadPricing.callSpreads
-                    : result.creditSpreadPricing.callSpreads.filter(r => r.horizonWeeks === Number(activeTab))
+                    ? creditSpreads.callSpreads
+                    : creditSpreads.callSpreads.filter(r => r.horizonWeeks === Number(activeTab))
                   }
                   type="call"
-                  spreadWidth={result.creditSpreadPricing.spreadWidth}
+                  spreadWidth={creditSpreads.spreadWidth}
                 />
               </div>
-            </>
-          )}
 
-          {/* Credit Spread Debug Info (temporary) */}
-          {result.creditSpreadPricing && (result.creditSpreadPricing as any)._debug && (
-            <div className="bg-surface-card border border-edge rounded-lg p-4">
-              <details>
-                <summary className="text-xs text-dim cursor-pointer">Credit Spread Debug Info</summary>
-                <pre className="text-xs text-dim mt-2 overflow-x-auto whitespace-pre-wrap">
-                  {JSON.stringify((result.creditSpreadPricing as any)._debug, null, 2)}
-                </pre>
-              </details>
-            </div>
+              {/* Credit Spread Debug Info (temporary) */}
+              {(creditSpreads as any)._debug && (
+                <div className="bg-surface-card border border-edge rounded-lg p-4">
+                  <details>
+                    <summary className="text-xs text-dim cursor-pointer">Credit Spread Debug Info</summary>
+                    <pre className="text-xs text-dim mt-2 overflow-x-auto whitespace-pre-wrap">
+                      {JSON.stringify((creditSpreads as any)._debug, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              )}
+            </>
           )}
 
           {/* Calculation Details Toggle + Download */}
