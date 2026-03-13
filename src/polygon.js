@@ -297,6 +297,8 @@ async function fetchOptionsForExpiration(ticker, expirationDate, contractType) {
     allResults = allResults.concat(data.results || []);
     nextUrl = data.next_url;
     url = nextUrl ? `${nextUrl}&apiKey=${apiKey}` : null;
+    // Rate-limit delay between paginated calls to avoid 429s
+    if (url) await new Promise(r => setTimeout(r, 200));
   }
   return allResults;
 }

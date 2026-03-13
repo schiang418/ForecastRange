@@ -179,8 +179,8 @@ function findBestSpread(contracts, sortedStrikes, boundary, type, spreadWidth) {
   const sellMid = extractPrice(sellContract);
   const buyMid = extractPrice(buyContract);
 
-  // Both prices must be available
-  if (sellMid <= 0 && buyMid <= 0) return null;
+  // Both prices must be available for a meaningful spread
+  if (sellMid <= 0 || buyMid <= 0) return null;
 
   const premium = Math.round((sellMid - buyMid) * 100) / 100;
   const actualWidth = Math.abs(sellStrike - buyStrike);
