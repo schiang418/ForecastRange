@@ -6,6 +6,7 @@ import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
 import PriceHistoryChart from './PriceHistoryChart';
 import UpcomingEvents from './UpcomingEvents';
+import PremiumChecklist from './PremiumChecklist';
 import { downloadForecastMarkdown } from '../exportMarkdown';
 
 type ViewTab = 'all' | '1' | '2' | '3' | '4';
@@ -362,6 +363,9 @@ export default function ForecastSection() {
               </span>
             </div>
           </div>
+
+          {/* Premium Sell / Avoid Checklist */}
+          <PremiumChecklist volatilityMetrics={result.volatilityMetrics} ticker={result.ticker} />
 
           {/* Data Table */}
           <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
