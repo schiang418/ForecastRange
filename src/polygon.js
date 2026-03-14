@@ -279,12 +279,14 @@ async function fetchSplits(ticker, fromDate, toDate) {
 /**
  * Fetch options chain snapshot filtered by expiration date and contract type.
  * Paginates to get all results for the given filters.
+ * @param {number} maxPages - Max pages to fetch (0 = unlimited). Default 0 for
+ *   backward compatibility. Use a cap (e.g. 4) for forecast to avoid timeouts.
  * Returns array of option contract snapshots.
  */
-async function fetchOptionsForExpiration(ticker, expirationDate, contractType) {
+async function fetchOptionsForExpiration(ticker, expirationDate, contractType, maxPages = 0) {
   const apiKey = getOptionsApiKey();
   let allResults = [];
-  let nextUrl = null;
+  let page = 0;
   const params = new URLSearchParams({ apiKey, limit: '250' });
   if (expirationDate) params.set('expiration_date', expirationDate);
   if (contractType) params.set('contract_type', contractType);
@@ -292,16 +294,18 @@ async function fetchOptionsForExpiration(ticker, expirationDate, contractType) {
   let url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(ticker)}?${params.toString()}`;
 
   while (url) {
+    if (maxPages > 0 && page >= maxPages) break;
     const res = await fetch(url);
     if (!res.ok) {
-      if (res.status === 404 || res.status === 403) return [];
+      if (res.status === 404 || res.status === 403) return allResults;
       const text = await res.text();
       throw new Error(`Polygon options API error for ${ticker}: ${res.status} ${text}`);
     }
     const data = await res.json();
     if (data.status === 'ERROR') return allResults;
     allResults = allResults.concat(data.results || []);
-    nextUrl = data.next_url;
+    page++;
+    const nextUrl = data.next_url;
     url = nextUrl ? `${nextUrl}&apiKey=${apiKey}` : null;
     // Rate-limit delay between paginated calls to avoid 429s
     if (url) await new Promise(r => setTimeout(r, 200));
