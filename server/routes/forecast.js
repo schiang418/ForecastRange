@@ -38,7 +38,7 @@ router.post('/', async (req, res) => {
     // Fetch OHLCV bars and options chain in parallel
     const [bars, optionsChain] = await Promise.all([
       fetchDailyBars(cleanTicker, fromDate, toDate),
-      fetchOptionsForExpiration(cleanTicker).catch(err => {
+      fetchOptionsChain(cleanTicker).catch(err => {
         console.warn(`[forecast] Options chain unavailable for ${cleanTicker}: ${err.message}`);
         return null;
       }),
