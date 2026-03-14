@@ -90,7 +90,9 @@ class ApiClient {
   // ── Credit Spread Pricing ───────────────────────────────
 
   async fetchCreditSpreads(ticker: string, horizons: ForecastHorizon[], spot: number): Promise<CreditSpreadPricingResult> {
-    const { data } = await this.client.post('/api/forecast/credit-spreads', { ticker, horizons, spot });
+    const { data } = await this.client.post('/api/forecast/credit-spreads', { ticker, horizons, spot }, {
+      timeout: 120000, // 2 minutes — credit spread pricing fetches many individual contracts
+    });
     return data;
   }
 
