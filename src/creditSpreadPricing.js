@@ -1,5 +1,5 @@
 const SPREAD_WIDTH = 50; // $50 spread width
-const RATE_LIMIT_DELAY = 200; // ms between individual contract fetches
+const RATE_LIMIT_DELAY = 50; // ms between individual contract fetches
 
 /**
  * Compute credit spread pricing for all horizons.
