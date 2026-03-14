@@ -53,7 +53,7 @@ async function fetchDailyBars(ticker, fromDate, toDate) {
  * Uses GET /v3/snapshot/options/{underlyingAsset}
  * Filterable by strike_price, expiration_date, contract_type.
  */
-async function fetchOptionsChain(ticker, { expirationDate, contractType, strikePrice } = {}) {
+async function fetchOptionsChain(ticker, { expirationDate, contractType, strikePrice, maxPages = 4 } = {}) {
   const apiKey = getOptionsApiKey();
   const params = new URLSearchParams({ apiKey, limit: '250' });
 
@@ -61,24 +61,36 @@ async function fetchOptionsChain(ticker, { expirationDate, contractType, strikeP
   if (contractType) params.set('contract_type', contractType);
   if (strikePrice) params.set('strike_price', strikePrice);
 
-  const url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(ticker)}?${params.toString()}`;
+  let url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(ticker)}?${params.toString()}`;
+  let allResults = [];
+  let page = 0;
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    // Options data may not be available for all tickers — graceful fallback
-    if (res.status === 404 || res.status === 403) {
-      return [];
+  while (url && page < maxPages) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      // Options data may not be available for all tickers — graceful fallback
+      if (res.status === 404 || res.status === 403) {
+        return allResults;
+      }
+      const text = await res.text();
+      throw new Error(`Polygon options API error for ${ticker}: ${res.status} ${text}`);
     }
-    const text = await res.text();
-    throw new Error(`Polygon options API error for ${ticker}: ${res.status} ${text}`);
+
+    const data = await res.json();
+    if (data.status === 'ERROR') {
+      return allResults;
+    }
+
+    allResults = allResults.concat(data.results || []);
+    page++;
+
+    // Follow pagination if more pages available and under cap
+    const nextUrl = data.next_url;
+    url = (nextUrl && page < maxPages) ? `${nextUrl}&apiKey=${apiKey}` : null;
+    if (url) await sleep(RATE_LIMIT_DELAY);
   }
 
-  const data = await res.json();
-  if (data.status === 'ERROR') {
-    return [];
-  }
-
-  return data.results || [];
+  return allResults;
 }
 
 /**
