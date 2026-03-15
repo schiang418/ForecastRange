@@ -36,6 +36,8 @@ function buildComparison(forecasts) {
     // Options availability
     ivAvailable: f.result.ivAvailable ?? false,
     straddleAvailable: f.result.straddleAvailable ?? false,
+    // Include horizons for premium-aware analysis (mobile needs this for credit spread pricing)
+    horizons: f.result.horizons ?? [],
   }));
 
   // Rank tickers by premium selling attractiveness

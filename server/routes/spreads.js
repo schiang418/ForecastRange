@@ -178,4 +178,149 @@ function buildSpreadDataBlock(f) {
   return lines.join('\n');
 }
 
+/**
+ * POST /api/forecast/spreads/premium-aware
+ * Body: { forecast: <ForecastResult>, creditSpreads: <CreditSpreadPricingResult> }
+ *
+ * Like /api/forecast/spreads but includes real credit spread pricing data
+ * in the AI prompt for more accurate recommendations.
+ */
+router.post('/premium-aware', async (req, res) => {
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    }
+
+    const { forecast, creditSpreads } = req.body;
+    if (!forecast?.ticker || !forecast?.horizons || !forecast?.spot) {
+      return res.status(400).json({ error: 'Valid forecast data required' });
+    }
+    if (!creditSpreads?.putSpreads || !creditSpreads?.callSpreads) {
+      return res.status(400).json({ error: 'Valid credit spread pricing data required' });
+    }
+
+    console.log(`[spreads/premium-aware] ${forecast.ticker}: spot=$${forecast.spot}, horizons=${forecast.horizons.length}, putSpreads=${creditSpreads.putSpreads.length}, callSpreads=${creditSpreads.callSpreads.length}`);
+
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey });
+
+    const dataBlock = buildSpreadDataBlock(forecast);
+    const pricingBlock = buildPricingDataBlock(creditSpreads);
+
+    const message = await client.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 2048,
+      system: `You are an expert options strategist specializing in credit spreads for premium collection.
+
+The user wants to sell credit spreads (put credit spreads and/or call credit spreads) with 1-2 week expirations, prioritizing SAFETY — minimizing the risk of the short strike being breached at expiration.
+
+You have BOTH the forecast data AND real live option pricing for credit spreads. Use the actual premiums to make concrete recommendations with real dollar amounts.
+
+Key principles:
+- Put credit spread: sell a put at a higher strike, buy a put at a lower strike. Risk = price drops below the sold put.
+- Call credit spread: sell a call at a lower strike, buy a call at a higher strike. Risk = price rises above the sold call.
+- For a good risk/reward balance, place the sold strike near or just outside the 68% range (1-sigma, ~16% chance of breach per side). This gives meaningful premium while keeping probability of profit around 80-85%.
+- The 50% range is aggressive (more premium but ~25% breach risk). The 90% range is too conservative (tiny premium, not worth the capital).
+- Consider the trend/skew: if bullish, put spreads are safer; if bearish, call spreads are safer.
+- Iron condors (both put + call spread) are best in neutral/compressed regimes.
+
+IMPORTANT: You now have REAL market prices. Use the actual premiums shown in the pricing data to:
+1. Compare premium available at each range (50%, 68%, 90%)
+2. Calculate actual risk/reward ratios using real premiums and max loss
+3. Recommend specific strikes with real dollar amounts per contract
+
+IMPORTANT: You MUST evaluate BOTH a put credit spread AND a call credit spread for every analysis.
+
+Output format — use this EXACT structure:
+
+**PUT CREDIT SPREAD EVALUATION:**
+- Sell PUT at $[strike] / Buy PUT at $[strike] — Premium: $[amount]/contract
+- Why it works or doesn't: [brief reasoning based on forecast, trend, S/R, AND actual premium]
+
+**CALL CREDIT SPREAD EVALUATION:**
+- Sell CALL at $[strike] / Buy CALL at $[strike] — Premium: $[amount]/contract
+- Why it works or doesn't: [brief reasoning based on forecast, trend, S/R, AND actual premium]
+
+**RECOMMENDATION: [PUT CREDIT SPREAD / CALL CREDIT SPREAD / IRON CONDOR / NO TRADE]**
+
+**Setup:**
+For each spread leg, specify:
+- Sell [PUT/CALL] at $[strike] / Buy [PUT/CALL] at $[strike]
+- Width: $[width]
+- Premium: $[actual premium]/contract (from live pricing)
+- Max Loss: $[actual max loss]/contract
+- Risk/Reward: [ratio]
+- Expiration: [target date]
+
+**Why this is safe:**
+- Which probability band the sold strike falls outside of
+- Supporting factors (trend, S/R levels, regime)
+
+**Risk factors:**
+- What could cause the spread to be tested
+- Conditions that would warrant early exit
+
+**Confidence: [HIGH / MEDIUM / LOW]**
+Based on how many signals align (trend, IV, regime, S/R levels, premium richness).`,
+      messages: [{
+        role: 'user',
+        content: `Analyze this stock for safe credit spread opportunities using both forecast data and live option pricing:\n\n${dataBlock}\n\n${pricingBlock}`,
+      }],
+    });
+
+    const analysis = message.content[0]?.text ?? null;
+    if (!analysis) {
+      return res.status(500).json({ error: 'Empty response from AI' });
+    }
+
+    res.json({ analysis });
+  } catch (err) {
+    console.error('[spreads/premium-aware] Error:', err);
+    res.status(500).json({ error: `Failed to generate premium-aware analysis: ${err.message}` });
+  }
+});
+
+/**
+ * Build a pricing data block from credit spread pricing result.
+ */
+function buildPricingDataBlock(cs) {
+  const lines = [];
+  lines.push('LIVE CREDIT SPREAD PRICING:');
+  lines.push(`Spread Width: $${cs.spreadWidth}`);
+  lines.push('');
+
+  if (cs.putSpreads && cs.putSpreads.length > 0) {
+    lines.push('PUT CREDIT SPREADS (sell higher put, buy lower put):');
+    for (const row of cs.putSpreads) {
+      lines.push(`  ${row.horizon} (${row.targetDate || row.horizonDays + ' days'}):`);
+      lines.push(`    Expected Move: $${row.expectedMove.toFixed(2)} (${row.expectedMovePct.toFixed(2)}%)`);
+      for (const rangeName of ['range50', 'range68', 'range90']) {
+        const cell = row.ranges[rangeName];
+        if (cell) {
+          lines.push(`    ${rangeName}: Sell $${cell.sellStrike} / Buy $${cell.buyStrike} — Premium $${cell.premium.toFixed(2)} ($${cell.premiumPerContract}/contract), Max Loss $${cell.maxLoss}`);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  if (cs.callSpreads && cs.callSpreads.length > 0) {
+    lines.push('CALL CREDIT SPREADS (sell lower call, buy higher call):');
+    for (const row of cs.callSpreads) {
+      lines.push(`  ${row.horizon} (${row.targetDate || row.horizonDays + ' days'}):`);
+      lines.push(`    Expected Move: $${row.expectedMove.toFixed(2)} (${row.expectedMovePct.toFixed(2)}%)`);
+      for (const rangeName of ['range50', 'range68', 'range90']) {
+        const cell = row.ranges[rangeName];
+        if (cell) {
+          lines.push(`    ${rangeName}: Sell $${cell.sellStrike} / Buy $${cell.buyStrike} — Premium $${cell.premium.toFixed(2)} ($${cell.premiumPerContract}/contract), Max Loss $${cell.maxLoss}`);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
 module.exports = router;

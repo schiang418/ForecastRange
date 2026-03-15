@@ -227,4 +227,68 @@ router.post('/credit-spreads', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/forecast/credit-spreads/batch
+ * Body: { tickers: [{ ticker, spot, horizons }] }
+ *
+ * Fetches credit spread pricing for multiple tickers sequentially.
+ * Used by the Compare screen's "Analyze with Pricing" feature.
+ */
+router.post('/credit-spreads/batch', async (req, res) => {
+  try {
+    const { tickers } = req.body;
+
+    if (!Array.isArray(tickers) || tickers.length === 0) {
+      return res.status(400).json({ error: 'tickers array is required' });
+    }
+
+    console.log(`[credit-spreads/batch] Processing ${tickers.length} tickers: ${tickers.map(t => t.ticker).join(', ')}`);
+
+    const results = {};
+    const failed = [];
+
+    for (const { ticker, spot, horizons } of tickers) {
+      try {
+        const cleanTicker = ticker.toUpperCase().replace(/[^A-Z0-9.]/g, '').slice(0, 10);
+        console.log(`[credit-spreads/batch] Fetching ${cleanTicker}, spot=${spot}, horizons=${horizons.length}`);
+
+        const fullChain = await fetchOptionsForExpiration(cleanTicker).catch(err => {
+          console.warn(`[credit-spreads/batch] Full chain fetch failed for ${cleanTicker}: ${err.message}`);
+          return [];
+        });
+
+        let chainToUse = fullChain;
+        if (!chainToUse || chainToUse.length === 0) {
+          chainToUse = await fetchOptionsChain(cleanTicker).catch(() => []);
+        }
+
+        console.log(`[credit-spreads/batch] ${cleanTicker}: ${chainToUse.length} contracts`);
+
+        if (chainToUse.length === 0) {
+          failed.push({ ticker: cleanTicker, error: `No options data for ${cleanTicker}` });
+          continue;
+        }
+
+        const result = await computeCreditSpreadPricing(
+          chainToUse, horizons, spot, cleanTicker, getOptionSnapshot, buildOptionTicker
+        );
+        results[cleanTicker] = result;
+        console.log(`[credit-spreads/batch] ${cleanTicker}: done (${result.putSpreads.length} put rows, ${result.callSpreads.length} call rows)`);
+      } catch (err) {
+        console.error(`[credit-spreads/batch] Error for ${ticker}: ${err.message}`);
+        failed.push({ ticker, error: err.message });
+      }
+    }
+
+    console.log(`[credit-spreads/batch] Complete: ${Object.keys(results).length} succeeded, ${failed.length} failed`);
+    res.json({ results, failed: failed.length > 0 ? failed : undefined });
+  } catch (err) {
+    console.error('[credit-spreads/batch] Error:', err);
+    if (err.message?.includes('429') || err.message?.includes('rate limit')) {
+      return res.status(429).json({ error: 'Rate limit exceeded. Please try again.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
