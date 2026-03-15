@@ -95,7 +95,7 @@ function RankCard({ item }: { item: CompareTickerResult }) {
         <View style={styles.rankRow}>
           <Text style={styles.rankLabel}>1W Move</Text>
           <Text style={styles.rankValue}>
-            ±{(item.weekMove * 100).toFixed(1)}%
+            ±{item.weekMove.toFixed(1)}%
             {item.weekSkew ? ` (${item.weekSkew})` : ''}
           </Text>
         </View>
@@ -104,10 +104,10 @@ function RankCard({ item }: { item: CompareTickerResult }) {
       {/* Composite Score Breakdown */}
       {item.compositeComponents && (
         <View style={styles.scoreBreakdown}>
-          <ScoreBar label="Premium" value={item.compositeComponents.premiumScore} max={40} />
-          <ScoreBar label="IV/RV" value={item.compositeComponents.ivRvScore} max={25} />
-          <ScoreBar label="IV Pct" value={item.compositeComponents.ivPctScore} max={25} />
-          <ScoreBar label="Regime" value={item.compositeComponents.regimeScore} max={10} />
+          <ScoreBar label="Premium" value={item.compositeComponents.premiumScore} max={100} />
+          <ScoreBar label="IV/RV" value={item.compositeComponents.ivRvScore} max={100} />
+          <ScoreBar label="IV Pct" value={item.compositeComponents.ivPctScore} max={100} />
+          <ScoreBar label="Regime" value={item.compositeComponents.regimeScore} max={100} />
         </View>
       )}
 
