@@ -156,20 +156,18 @@ export default function ForecastScreen() {
             {/* Spread Analysis Result */}
             {spreadAnalysis && (
               <View style={styles.spreadBox}>
-                <View style={styles.analysisHeader}>
-                  <Text style={styles.spreadTitle}>AI Credit Spread Analysis</Text>
-                  <Pressable
-                    style={styles.saveBtn}
-                    onPress={() => saveAnalysisAsMarkdown(
-                      `AI Credit Spread Analysis - ${forecast.ticker}`,
-                      spreadAnalysis,
-                      `${forecast.ticker}_spread_analysis`,
-                    )}
-                  >
-                    <Text style={styles.saveBtnText}>Save</Text>
-                  </Pressable>
-                </View>
+                <Text style={styles.spreadTitle}>AI Credit Spread Analysis</Text>
                 <Text style={styles.spreadText}>{spreadAnalysis}</Text>
+                <Pressable
+                  style={styles.saveBtn}
+                  onPress={() => saveAnalysisAsMarkdown(
+                    `AI Credit Spread Analysis - ${forecast.ticker}`,
+                    spreadAnalysis,
+                    `${forecast.ticker}_spread_analysis`,
+                  )}
+                >
+                  <Text style={styles.saveBtnText}>Save as Markdown</Text>
+                </Pressable>
               </View>
             )}
 
@@ -204,27 +202,23 @@ export default function ForecastScreen() {
 
             {premiumAnalysis && (
               <View style={styles.premiumAnalysisBox}>
-                <View style={styles.analysisHeader}>
-                  <View>
-                    <Text style={styles.premiumAnalysisTitle}>
-                      Premium-Aware Spread Analysis
-                    </Text>
-                    <Text style={styles.premiumAnalysisSubtitle}>
-                      Claude + Live Pricing
-                    </Text>
-                  </View>
-                  <Pressable
-                    style={styles.saveBtn}
-                    onPress={() => saveAnalysisAsMarkdown(
-                      `Premium-Aware Spread Analysis - ${forecast.ticker}`,
-                      premiumAnalysis,
-                      `${forecast.ticker}_premium_analysis`,
-                    )}
-                  >
-                    <Text style={styles.saveBtnText}>Save</Text>
-                  </Pressable>
-                </View>
+                <Text style={styles.premiumAnalysisTitle}>
+                  Premium-Aware Spread Analysis
+                </Text>
+                <Text style={styles.premiumAnalysisSubtitle}>
+                  Claude + Live Pricing
+                </Text>
                 <Text style={styles.spreadText}>{premiumAnalysis}</Text>
+                <Pressable
+                  style={styles.saveBtn}
+                  onPress={() => saveAnalysisAsMarkdown(
+                    `Premium-Aware Spread Analysis - ${forecast.ticker}`,
+                    premiumAnalysis,
+                    `${forecast.ticker}_premium_analysis`,
+                  )}
+                >
+                  <Text style={styles.saveBtnText}>Save as Markdown</Text>
+                </Pressable>
               </View>
             )}
           </>
@@ -416,19 +410,15 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 20,
   },
-  analysisHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-  },
   saveBtn: {
+    alignSelf: 'flex-start',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
     backgroundColor: colors.surfaceLight,
     borderWidth: 1,
     borderColor: colors.accent,
+    marginTop: spacing.lg,
   },
   saveBtnText: {
     fontSize: fontSize.xs,
