@@ -388,6 +388,22 @@ export async function fetchCreditSpreads(ticker: string, horizons: ForecastHoriz
   return res.json();
 }
 
+export async function fetchPremiumAwareSpreadAnalysis(forecast: ForecastResult, creditSpreads: CreditSpreadPricingResult): Promise<string> {
+  const res = await fetch('/api/forecast/spreads/premium-aware', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ forecast, creditSpreads }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to generate premium-aware analysis (${res.status})`);
+  }
+
+  const data = await res.json();
+  return data.analysis;
+}
+
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
   const res = await fetch('/api/forecast', {
     method: 'POST',
