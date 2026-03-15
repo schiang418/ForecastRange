@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { colors, spacing, fontSize } from '../config/theme';
@@ -6,8 +6,10 @@ import { useAuthStore } from '../store/authStore';
 
 export default function LoginScreen() {
   const { login, loading } = useAuthStore();
+  const [error, setError] = useState<string | null>(null);
 
   const handleAppleLogin = async () => {
+    setError(null);
     try {
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -23,9 +25,10 @@ export default function LoginScreen() {
         });
       }
     } catch (error: any) {
-      if (error.code !== 'ERR_REQUEST_CANCELED') {
-        console.error('Apple login failed:', error);
-      }
+      if (error.code === 'ERR_REQUEST_CANCELED') return;
+      console.error('Apple login failed:', error);
+      const serverMsg = error?.response?.data?.error;
+      setError(serverMsg || error.message || 'Login failed. Please try again.');
     }
   };
 
@@ -38,6 +41,12 @@ export default function LoginScreen() {
           IV-powered forecasts for options premium sellers
         </Text>
       </View>
+
+      {error && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
 
       <View style={styles.buttons}>
         {loading ? (
@@ -92,6 +101,17 @@ const styles = StyleSheet.create({
   description: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  errorBox: {
+    backgroundColor: 'rgba(255, 80, 80, 0.15)',
+    borderRadius: 8,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  errorText: {
+    color: '#ff5050',
+    fontSize: fontSize.sm,
     textAlign: 'center',
   },
   buttons: {

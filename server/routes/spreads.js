@@ -28,7 +28,7 @@ router.post('/', async (req, res) => {
 
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: `You are an expert options strategist specializing in credit spreads for premium collection.
 
 The user wants to sell credit spreads (put credit spreads and/or call credit spreads) with 1-2 week expirations, prioritizing SAFETY — minimizing the risk of the short strike being breached at expiration.
@@ -210,7 +210,7 @@ router.post('/premium-aware', async (req, res) => {
 
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: `You are an expert options strategist specializing in credit spreads for premium collection.
 
 The user wants to sell credit spreads (put credit spreads and/or call credit spreads) with 1-2 week expirations, prioritizing SAFETY — minimizing the risk of the short strike being breached at expiration.

@@ -95,7 +95,7 @@ function RankCard({ item }: { item: CompareTickerResult }) {
         <View style={styles.rankRow}>
           <Text style={styles.rankLabel}>1W Move</Text>
           <Text style={styles.rankValue}>
-            ±{(item.weekMove * 100).toFixed(1)}%
+            ±{item.weekMove.toFixed(1)}%
             {item.weekSkew ? ` (${item.weekSkew})` : ''}
           </Text>
         </View>
@@ -104,10 +104,10 @@ function RankCard({ item }: { item: CompareTickerResult }) {
       {/* Composite Score Breakdown */}
       {item.compositeComponents && (
         <View style={styles.scoreBreakdown}>
-          <ScoreBar label="Premium" value={item.compositeComponents.premiumScore} max={40} />
-          <ScoreBar label="IV/RV" value={item.compositeComponents.ivRvScore} max={25} />
-          <ScoreBar label="IV Pct" value={item.compositeComponents.ivPctScore} max={25} />
-          <ScoreBar label="Regime" value={item.compositeComponents.regimeScore} max={10} />
+          <ScoreBar label="Premium" value={item.compositeComponents.premiumScore} max={100} />
+          <ScoreBar label="IV/RV" value={item.compositeComponents.ivRvScore} max={100} />
+          <ScoreBar label="IV Pct" value={item.compositeComponents.ivPctScore} max={100} />
+          <ScoreBar label="Regime" value={item.compositeComponents.regimeScore} max={100} />
         </View>
       )}
 
@@ -209,29 +209,27 @@ export default function CompareScreen() {
 
           {comparison.narrative && (
             <View style={styles.narrativeBox}>
-              <View style={styles.narrativeHeader}>
-                <Text style={styles.narrativeTitle}>AI Analysis</Text>
-                <View style={styles.narrativeActions}>
-                  <Pressable
-                    style={styles.saveBtn}
-                    onPress={() => saveAnalysisAsMarkdown(
-                      `AI Comparison Analysis - ${comparison.comparison.tickers.map(t => t.ticker).join(' vs ')}`,
-                      comparison.narrative!,
-                      `compare_${comparison.comparison.tickers.map(t => t.ticker).join('_')}_analysis`,
-                    )}
-                  >
-                    <Text style={styles.saveBtnText}>Save</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.regenerateBtn}
-                    onPress={() => fetchNarrative(comparison)}
-                    disabled={narrativeLoading}
-                  >
-                    <Text style={styles.regenerateText}>Regenerate</Text>
-                  </Pressable>
-                </View>
-              </View>
+              <Text style={styles.narrativeTitle}>AI Analysis</Text>
               <Text style={styles.narrativeText}>{comparison.narrative}</Text>
+              <View style={styles.analysisFooter}>
+                <Pressable
+                  style={styles.saveBtn}
+                  onPress={() => saveAnalysisAsMarkdown(
+                    `AI Comparison Analysis - ${comparison.comparison.tickers.map(t => t.ticker).join(' vs ')}`,
+                    comparison.narrative!,
+                    `compare_${comparison.comparison.tickers.map(t => t.ticker).join('_')}_analysis`,
+                  )}
+                >
+                  <Text style={styles.saveBtnText}>Save as Markdown</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.regenerateBtn}
+                  onPress={() => fetchNarrative(comparison)}
+                  disabled={narrativeLoading}
+                >
+                  <Text style={styles.regenerateText}>Regenerate</Text>
+                </Pressable>
+              </View>
             </View>
           )}
         </>
@@ -270,29 +268,27 @@ export default function CompareScreen() {
 
           {premiumNarrative && (
             <View style={styles.premiumNarrativeBox}>
-              <View style={styles.narrativeHeader}>
-                <Text style={styles.premiumNarrativeTitle}>Premium-Aware AI Analysis</Text>
-                <View style={styles.narrativeActions}>
-                  <Pressable
-                    style={styles.saveBtn}
-                    onPress={() => saveAnalysisAsMarkdown(
-                      `Premium-Aware Comparison Analysis - ${comparison.comparison.tickers.map(t => t.ticker).join(' vs ')}`,
-                      premiumNarrative,
-                      `compare_${comparison.comparison.tickers.map(t => t.ticker).join('_')}_premium_analysis`,
-                    )}
-                  >
-                    <Text style={styles.saveBtnText}>Save</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.regenerateBtn}
-                    onPress={() => fetchPremiumNarrative(comparison)}
-                    disabled={premiumNarrativeLoading}
-                  >
-                    <Text style={styles.regenerateText}>Regenerate</Text>
-                  </Pressable>
-                </View>
-              </View>
+              <Text style={styles.premiumNarrativeTitle}>Premium-Aware AI Analysis</Text>
               <Text style={styles.narrativeText}>{premiumNarrative}</Text>
+              <View style={styles.analysisFooter}>
+                <Pressable
+                  style={styles.saveBtn}
+                  onPress={() => saveAnalysisAsMarkdown(
+                    `Premium-Aware Comparison Analysis - ${comparison.comparison.tickers.map(t => t.ticker).join(' vs ')}`,
+                    premiumNarrative,
+                    `compare_${comparison.comparison.tickers.map(t => t.ticker).join('_')}_premium_analysis`,
+                  )}
+                >
+                  <Text style={styles.saveBtnText}>Save as Markdown</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.regenerateBtn}
+                  onPress={() => fetchPremiumNarrative(comparison)}
+                  disabled={premiumNarrativeLoading}
+                >
+                  <Text style={styles.regenerateText}>Regenerate</Text>
+                </Pressable>
+              </View>
             </View>
           )}
         </>
@@ -507,6 +503,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: '700',
     color: colors.accent,
+    marginBottom: spacing.md,
   },
   regenerateBtn: {
     paddingHorizontal: spacing.md,
@@ -561,16 +558,21 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: '700',
     color: colors.green,
+    marginBottom: spacing.md,
   },
-  narrativeActions: {
+  analysisFooter: {
     flexDirection: 'row',
     gap: spacing.sm,
     alignItems: 'center',
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   saveBtn: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
     backgroundColor: colors.surfaceLight,
     borderWidth: 1,
     borderColor: colors.accent,
