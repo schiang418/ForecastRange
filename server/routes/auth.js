@@ -1,9 +1,14 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const appleSignin = require('apple-signin-auth');
+const fetch = require('node-fetch');
 const { OAuth2Client } = require('google-auth-library');
 const { getDb, ensureAuthTables } = require('../db');
 const { sql } = require('drizzle-orm');
+
+// Fix: Node 18+ built-in fetch (undici) fails on some platforms (Railway).
+// Inject node-fetch instead so Apple public key retrieval works reliably.
+appleSignin._setFetch(fetch);
 
 const router = express.Router();
 
