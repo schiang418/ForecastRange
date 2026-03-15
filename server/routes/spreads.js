@@ -178,4 +178,164 @@ function buildSpreadDataBlock(f) {
   return lines.join('\n');
 }
 
+/**
+ * POST /api/forecast/spreads/premium-aware
+ * Body: { forecast: <ForecastResult>, creditSpreads: <CreditSpreadPricingResult> }
+ *
+ * Premium-aware spread analysis: sends forecast data PLUS real credit spread
+ * pricing (premiums, IVs, max loss) to Claude for optimized recommendations.
+ */
+router.post('/premium-aware', async (req, res) => {
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    }
+
+    const { forecast, creditSpreads } = req.body;
+    if (!forecast?.ticker || !forecast?.horizons || !forecast?.spot) {
+      return res.status(400).json({ error: 'Valid forecast data required' });
+    }
+    if (!creditSpreads?.putSpreads || !creditSpreads?.callSpreads) {
+      return res.status(400).json({ error: 'Credit spread pricing data required' });
+    }
+
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey });
+
+    const dataBlock = buildSpreadDataBlock(forecast);
+    const pricingBlock = buildCreditSpreadPricingBlock(creditSpreads);
+
+    const message = await client.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 2048,
+      system: `You are an expert options strategist specializing in credit spreads for premium collection.
+
+The user wants to sell credit spreads (put credit spreads and/or call credit spreads) with 1-2 week expirations, prioritizing SAFETY — minimizing the risk of the short strike being breached at expiration.
+
+You have TWO types of data:
+1. FORECAST DATA — probability ranges, volatility metrics, trend, support/resistance
+2. REAL CREDIT SPREAD PRICING — actual option premiums, IVs, and max loss from live market data for spreads at the 50%, 68%, and 90% probability boundaries
+
+Your job: analyze BOTH the forecast data and the real pricing to recommend the optimal credit spread setup that balances safety with premium collected.
+
+Key principles:
+- Put credit spread: sell a put at a higher strike, buy a put at a lower strike. Risk = price drops below the sold put.
+- Call credit spread: sell a call at a lower strike, buy a call at a higher strike. Risk = price rises above the sold call.
+- Use the REAL PREMIUMS to evaluate risk/reward. A spread with $0.10 premium is not worth the capital risk regardless of probability.
+- Compare premium-to-max-loss ratios across probability levels. The 68% band often gives the best risk/reward, but check the actual numbers.
+- If the 90% band spread still pays meaningful premium, it may be the better trade due to higher safety.
+- If the 50% band spread pays significantly more, quantify how much extra risk that entails.
+- Consider the trend/skew: if bullish, put spreads are safer; if bearish, call spreads are safer.
+- Consider support/resistance as natural barriers that add safety.
+- Iron condors (both put + call spread) are best in neutral/compressed regimes — evaluate whether BOTH sides have attractive premiums.
+- Flag any spreads where premium is too thin (<$0.15 per share) or where IV skew between legs is unusually large.
+
+IMPORTANT: You MUST evaluate BOTH a put credit spread AND a call credit spread for every analysis. Compare the actual premiums for each side. Do not default to put spreads — give call spreads equal consideration based on real pricing data.
+
+Output format — use this EXACT structure:
+
+**PUT CREDIT SPREAD EVALUATION:**
+For each probability level with pricing data, show:
+- [50%/68%/90%] Sell PUT $[strike] / Buy PUT $[strike] — Premium: $[X]/contract, Max Loss: $[X], Risk/Reward: [ratio]
+- Best put spread: [which probability level and why, referencing actual premium]
+- Why it works or doesn't: [reasoning based on forecast, trend, S/R, AND actual premium quality]
+
+**CALL CREDIT SPREAD EVALUATION:**
+For each probability level with pricing data, show:
+- [50%/68%/90%] Sell CALL $[strike] / Buy CALL $[strike] — Premium: $[X]/contract, Max Loss: $[X], Risk/Reward: [ratio]
+- Best call spread: [which probability level and why, referencing actual premium]
+- Why it works or doesn't: [reasoning based on forecast, trend, S/R, AND actual premium quality]
+
+**RECOMMENDATION: [PUT CREDIT SPREAD / CALL CREDIT SPREAD / IRON CONDOR / NO TRADE]**
+
+**Setup:**
+For each spread leg, specify:
+- Sell [PUT/CALL] at $[strike] / Buy [PUT/CALL] at $[strike]
+- Width: $[width]
+- Expiration: [date]
+- Premium collected: $[X] per contract
+- Max loss: $[X] per contract
+- Return on risk: [premium/max_loss as %]
+
+**Why this is the optimal trade:**
+- Which probability band and why (reference the actual premium numbers)
+- Premium quality assessment (is it worth the capital at risk?)
+- Supporting factors (trend, S/R levels, regime, IV skew)
+
+**Risk factors:**
+- What could cause the spread to be tested
+- Conditions that would warrant early exit
+- Any IV skew concerns between legs
+
+**Confidence: [HIGH / MEDIUM / LOW]**
+Based on how many signals align (trend, IV, regime, S/R levels, premium quality).
+
+Be specific with strike prices. Use the actual pricing data provided. If premiums are too thin across all setups, say NO TRADE and explain why.`,
+      messages: [{
+        role: 'user',
+        content: `Analyze this stock for optimal credit spread opportunities using both the forecast and real market pricing:\n\n${dataBlock}\n\n${pricingBlock}`,
+      }],
+    });
+
+    const analysis = message.content[0]?.text ?? null;
+    if (!analysis) {
+      return res.status(500).json({ error: 'Empty response from AI' });
+    }
+
+    res.json({ analysis });
+  } catch (err) {
+    console.error('[spreads/premium-aware] Error:', err);
+    res.status(500).json({ error: `Failed to generate premium-aware analysis: ${err.message}` });
+  }
+});
+
+/**
+ * Build a text block describing real credit spread pricing for the Claude prompt.
+ */
+function buildCreditSpreadPricingBlock(cs) {
+  const lines = [];
+  lines.push('=== REAL CREDIT SPREAD PRICING (Live Market Data) ===');
+  lines.push(`Spread Width: $${cs.spreadWidth}`);
+  lines.push('');
+
+  const formatSpreadRows = (rows, type) => {
+    for (const row of rows) {
+      if (row.horizonWeeks > 2) continue; // focus on 1W and 2W
+      lines.push(`  ${row.horizon} (exp: ${row.expUsed || row.targetDate}):`);
+
+      let hasAny = false;
+      for (const [rangeName, label] of [['range50', '50%'], ['range68', '68%'], ['range90', '90%']]) {
+        const cell = row.ranges[rangeName];
+        if (!cell) continue;
+        hasAny = true;
+
+        const returnOnRisk = cell.maxLoss > 0
+          ? ((cell.premiumPerContract / cell.maxLoss) * 100).toFixed(1) + '%'
+          : 'N/A';
+
+        lines.push(`    ${label} band:`);
+        lines.push(`      Sell ${type.toUpperCase()} $${cell.sellStrike} (mid: $${cell.sellMid.toFixed(2)}${cell.sellIV != null ? ', IV: ' + (cell.sellIV * 100).toFixed(1) + '%' : ''})`);
+        lines.push(`      Buy  ${type.toUpperCase()} $${cell.buyStrike} (mid: $${cell.buyMid.toFixed(2)}${cell.buyIV != null ? ', IV: ' + (cell.buyIV * 100).toFixed(1) + '%' : ''})`);
+        lines.push(`      Premium: $${cell.premium.toFixed(2)}/share ($${cell.premiumPerContract}/contract)`);
+        lines.push(`      Max Loss: $${cell.maxLoss}/contract`);
+        lines.push(`      Return on Risk: ${returnOnRisk}`);
+      }
+
+      if (!hasAny) {
+        lines.push('    No pricing available');
+      }
+      lines.push('');
+    }
+  };
+
+  lines.push('PUT CREDIT SPREADS:');
+  formatSpreadRows(cs.putSpreads, 'put');
+
+  lines.push('CALL CREDIT SPREADS:');
+  formatSpreadRows(cs.callSpreads, 'call');
+
+  return lines.join('\n');
+}
+
 module.exports = router;

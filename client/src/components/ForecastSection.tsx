@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, TrendingUp, Loader2, AlertCircle, BarChart3, Download, Scissors } from 'lucide-react';
-import { fetchForecast, fetchSpreadAnalysis, fetchCreditSpreads, ForecastResult, CreditSpreadPricingResult } from '../api';
+import { fetchForecast, fetchSpreadAnalysis, fetchPremiumAwareSpreadAnalysis, fetchCreditSpreads, ForecastResult, CreditSpreadPricingResult } from '../api';
 import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
@@ -25,6 +25,9 @@ export default function ForecastSection() {
   const [creditSpreads, setCreditSpreads] = useState<CreditSpreadPricingResult | null>(null);
   const [creditSpreadsLoading, setCreditSpreadsLoading] = useState(false);
   const [creditSpreadsError, setCreditSpreadsError] = useState<string | null>(null);
+  const [premiumAnalysis, setPremiumAnalysis] = useState<string | null>(null);
+  const [premiumAnalysisLoading, setPremiumAnalysisLoading] = useState(false);
+  const [premiumAnalysisError, setPremiumAnalysisError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +41,8 @@ export default function ForecastSection() {
     setSpreadError(null);
     setCreditSpreads(null);
     setCreditSpreadsError(null);
+    setPremiumAnalysis(null);
+    setPremiumAnalysisError(null);
 
     try {
       const data = await fetchForecast(cleanTicker);
@@ -75,6 +80,26 @@ export default function ForecastSection() {
       setCreditSpreadsError(err.message || 'Failed to fetch credit spreads');
     } finally {
       setCreditSpreadsLoading(false);
+    }
+  };
+
+  const handlePremiumAwareAnalysis = async () => {
+    if (!result) return;
+    setPremiumAnalysisLoading(true);
+    setPremiumAnalysisError(null);
+    try {
+      // Fetch credit spreads first if not already loaded
+      let spreads = creditSpreads;
+      if (!spreads) {
+        spreads = await fetchCreditSpreads(result.ticker, result.horizons, result.spot);
+        setCreditSpreads(spreads);
+      }
+      const analysis = await fetchPremiumAwareSpreadAnalysis(result, spreads);
+      setPremiumAnalysis(analysis);
+    } catch (err: any) {
+      setPremiumAnalysisError(err.message || 'Failed to generate premium-aware analysis');
+    } finally {
+      setPremiumAnalysisLoading(false);
     }
   };
 
@@ -545,6 +570,59 @@ export default function ForecastSection() {
             )}
             {spreadError && (
               <p className="mt-3 text-xs text-red-400">{spreadError}</p>
+            )}
+          </div>
+
+          {/* Premium-Aware Credit Spread Analysis */}
+          <div className="bg-surface-card border border-edge rounded-lg p-5">
+            {premiumAnalysis ? (
+              <>
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Scissors className="w-5 h-5 text-green-400" />
+                  <span className="text-green-400">Premium-Aware Spread Analysis</span>
+                  <span className="text-xs text-dim font-normal">(Claude + Live Pricing)</span>
+                </h3>
+                <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap prose-invert mb-4">
+                  {premiumAnalysis}
+                </div>
+                <button
+                  onClick={handlePremiumAwareAnalysis}
+                  disabled={premiumAnalysisLoading}
+                  className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
+                >
+                  {premiumAnalysisLoading ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                  ) : (
+                    'Regenerate Analysis'
+                  )}
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Scissors className="w-5 h-5 text-dim" />
+                    Premium-Aware Spread Analysis
+                  </h3>
+                  <p className="text-xs text-dim mt-1">
+                    AI analysis using forecast data <strong>plus real option premiums</strong> — optimizes for actual risk/reward from live market pricing.
+                  </p>
+                </div>
+                <button
+                  onClick={handlePremiumAwareAnalysis}
+                  disabled={premiumAnalysisLoading}
+                  className="px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 flex-shrink-0 ml-4"
+                >
+                  {premiumAnalysisLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" />Analyzing...</>
+                  ) : (
+                    'Analyze with Pricing'
+                  )}
+                </button>
+              </div>
+            )}
+            {premiumAnalysisError && (
+              <p className="mt-3 text-xs text-red-400">{premiumAnalysisError}</p>
             )}
           </div>
         </div>
