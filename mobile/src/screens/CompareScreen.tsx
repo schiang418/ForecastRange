@@ -6,6 +6,7 @@ import {
 import { colors, spacing, fontSize } from '../config/theme';
 import { useForecastStore } from '../store/forecastStore';
 import { CompareTickerResult } from '../types/forecast';
+import { saveAnalysisAsMarkdown } from '../utils/saveAnalysis';
 
 function medalEmoji(rank: number): string {
   if (rank === 1) return '1st';
@@ -210,13 +211,25 @@ export default function CompareScreen() {
             <View style={styles.narrativeBox}>
               <View style={styles.narrativeHeader}>
                 <Text style={styles.narrativeTitle}>AI Analysis</Text>
-                <Pressable
-                  style={styles.regenerateBtn}
-                  onPress={() => fetchNarrative(comparison)}
-                  disabled={narrativeLoading}
-                >
-                  <Text style={styles.regenerateText}>Regenerate</Text>
-                </Pressable>
+                <View style={styles.narrativeActions}>
+                  <Pressable
+                    style={styles.saveBtn}
+                    onPress={() => saveAnalysisAsMarkdown(
+                      `AI Comparison Analysis - ${comparison.comparison.tickers.map(t => t.ticker).join(' vs ')}`,
+                      comparison.narrative!,
+                      `compare_${comparison.comparison.tickers.map(t => t.ticker).join('_')}_analysis`,
+                    )}
+                  >
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.regenerateBtn}
+                    onPress={() => fetchNarrative(comparison)}
+                    disabled={narrativeLoading}
+                  >
+                    <Text style={styles.regenerateText}>Regenerate</Text>
+                  </Pressable>
+                </View>
               </View>
               <Text style={styles.narrativeText}>{comparison.narrative}</Text>
             </View>
@@ -259,13 +272,25 @@ export default function CompareScreen() {
             <View style={styles.premiumNarrativeBox}>
               <View style={styles.narrativeHeader}>
                 <Text style={styles.premiumNarrativeTitle}>Premium-Aware AI Analysis</Text>
-                <Pressable
-                  style={styles.regenerateBtn}
-                  onPress={() => fetchPremiumNarrative(comparison)}
-                  disabled={premiumNarrativeLoading}
-                >
-                  <Text style={styles.regenerateText}>Regenerate</Text>
-                </Pressable>
+                <View style={styles.narrativeActions}>
+                  <Pressable
+                    style={styles.saveBtn}
+                    onPress={() => saveAnalysisAsMarkdown(
+                      `Premium-Aware Comparison Analysis - ${comparison.comparison.tickers.map(t => t.ticker).join(' vs ')}`,
+                      premiumNarrative,
+                      `compare_${comparison.comparison.tickers.map(t => t.ticker).join('_')}_premium_analysis`,
+                    )}
+                  >
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.regenerateBtn}
+                    onPress={() => fetchPremiumNarrative(comparison)}
+                    disabled={premiumNarrativeLoading}
+                  >
+                    <Text style={styles.regenerateText}>Regenerate</Text>
+                  </Pressable>
+                </View>
               </View>
               <Text style={styles.narrativeText}>{premiumNarrative}</Text>
             </View>
@@ -536,6 +561,24 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: '700',
     color: colors.green,
+  },
+  narrativeActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  saveBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  saveBtnText: {
+    fontSize: fontSize.xs,
+    color: colors.accent,
+    fontWeight: '600',
   },
   failedBox: {
     backgroundColor: '#3b1818',

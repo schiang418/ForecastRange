@@ -12,6 +12,7 @@ import PriceHistoryChart from '../components/PriceHistoryChart';
 import UpcomingEvents from '../components/UpcomingEvents';
 import PremiumChecklist from '../components/PremiumChecklist';
 import CreditSpreadTable from '../components/CreditSpreadTable';
+import { saveAnalysisAsMarkdown } from '../utils/saveAnalysis';
 
 export default function ForecastScreen() {
   const [ticker, setTicker] = useState('');
@@ -155,7 +156,19 @@ export default function ForecastScreen() {
             {/* Spread Analysis Result */}
             {spreadAnalysis && (
               <View style={styles.spreadBox}>
-                <Text style={styles.spreadTitle}>AI Credit Spread Analysis</Text>
+                <View style={styles.analysisHeader}>
+                  <Text style={styles.spreadTitle}>AI Credit Spread Analysis</Text>
+                  <Pressable
+                    style={styles.saveBtn}
+                    onPress={() => saveAnalysisAsMarkdown(
+                      `AI Credit Spread Analysis - ${forecast.ticker}`,
+                      spreadAnalysis,
+                      `${forecast.ticker}_spread_analysis`,
+                    )}
+                  >
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </Pressable>
+                </View>
                 <Text style={styles.spreadText}>{spreadAnalysis}</Text>
               </View>
             )}
@@ -191,12 +204,26 @@ export default function ForecastScreen() {
 
             {premiumAnalysis && (
               <View style={styles.premiumAnalysisBox}>
-                <Text style={styles.premiumAnalysisTitle}>
-                  Premium-Aware Spread Analysis
-                </Text>
-                <Text style={styles.premiumAnalysisSubtitle}>
-                  Claude + Live Pricing
-                </Text>
+                <View style={styles.analysisHeader}>
+                  <View>
+                    <Text style={styles.premiumAnalysisTitle}>
+                      Premium-Aware Spread Analysis
+                    </Text>
+                    <Text style={styles.premiumAnalysisSubtitle}>
+                      Claude + Live Pricing
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={styles.saveBtn}
+                    onPress={() => saveAnalysisAsMarkdown(
+                      `Premium-Aware Spread Analysis - ${forecast.ticker}`,
+                      premiumAnalysis,
+                      `${forecast.ticker}_premium_analysis`,
+                    )}
+                  >
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </Pressable>
+                </View>
                 <Text style={styles.spreadText}>{premiumAnalysis}</Text>
               </View>
             )}
@@ -388,5 +415,24 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  analysisHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  saveBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  saveBtnText: {
+    fontSize: fontSize.xs,
+    color: colors.accent,
+    fontWeight: '600',
   },
 });
