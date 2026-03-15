@@ -136,4 +136,149 @@ router.post('/', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/forecast/credit-spreads/batch
+ * Body: { tickers: [{ ticker, spot, horizons }] }
+ *
+ * Fetches credit spread pricing for multiple tickers SEQUENTIALLY
+ * to avoid hitting Polygon rate limits. Each ticker is processed
+ * one at a time with a delay between them.
+ */
+router.post('/batch', async (req, res) => {
+  try {
+    const { tickers } = req.body;
+
+    if (!Array.isArray(tickers) || tickers.length < 1) {
+      return res.status(400).json({ error: 'tickers array required' });
+    }
+    if (tickers.length > 10) {
+      return res.status(400).json({ error: 'Maximum 10 tickers allowed' });
+    }
+
+    console.log(`[credit-spreads/batch] Processing ${tickers.length} tickers sequentially`);
+
+    const results = {};
+    const failed = [];
+    const INTER_TICKER_DELAY = 1500; // 1.5s between tickers to stay under rate limits
+
+    for (let i = 0; i < tickers.length; i++) {
+      const { ticker, spot, horizons } = tickers[i];
+
+      if (!ticker || !spot || !horizons?.length) {
+        failed.push({ ticker: ticker || `index_${i}`, error: 'Missing ticker, spot, or horizons' });
+        continue;
+      }
+
+      // Delay between tickers (not before the first one)
+      if (i > 0) {
+        await new Promise(r => setTimeout(r, INTER_TICKER_DELAY));
+      }
+
+      try {
+        console.log(`[credit-spreads/batch] [${i + 1}/${tickers.length}] Fetching ${ticker}...`);
+
+        // Focus on 1W and 2W only to reduce API calls
+        const shortHorizons = horizons.filter(h => h.horizonWeeks <= 2);
+        const expirations = [...new Set(shortHorizons.map(h => h.targetDate).filter(Boolean))];
+
+        const chainsByExpiration = {};
+        // Fetch expirations sequentially per ticker to be rate-limit safe
+        for (const exp of expirations) {
+          const [puts, calls] = await Promise.all([
+            fetchOptionsForExpiration(ticker, exp, 'put').catch(() => []),
+            fetchOptionsForExpiration(ticker, exp, 'call').catch(() => []),
+          ]);
+          chainsByExpiration[exp] = { puts, calls };
+          // Small delay between expirations within a ticker
+          await new Promise(r => setTimeout(r, 300));
+        }
+
+        const putSpreads = [];
+        const callSpreads = [];
+
+        for (const h of shortHorizons) {
+          const exp = h.targetDate;
+          const chains = chainsByExpiration[exp] || { puts: [], calls: [] };
+
+          const putRow = {
+            horizon: h.horizon,
+            horizonWeeks: h.horizonWeeks,
+            horizonDays: h.horizonDays,
+            targetDate: h.targetDate,
+            expectedMove: h.expectedMove,
+            expectedMovePct: h.expectedMovePct,
+            ranges: {},
+          };
+          const callRow = { ...putRow, ranges: {} };
+
+          for (const rangeName of ['range50', 'range68', 'range90']) {
+            const range = h[rangeName];
+            if (!range) continue;
+
+            // PUT CREDIT SPREAD
+            const putSellTarget = roundToStrike(range.low, 'down');
+            if (putSellTarget - SPREAD_WIDTH > 0) {
+              const sellPut = findContractPrice(chains.puts, putSellTarget, 'put', 10);
+              const buyPut = sellPut
+                ? findContractPrice(chains.puts, sellPut.strike - SPREAD_WIDTH, 'put', 10)
+                : null;
+              if (sellPut && buyPut && sellPut.strike !== buyPut.strike) {
+                const premium = Math.round((sellPut.mid - buyPut.mid) * 100) / 100;
+                const actualWidth = sellPut.strike - buyPut.strike;
+                putRow.ranges[rangeName] = {
+                  sellStrike: sellPut.strike,
+                  buyStrike: buyPut.strike,
+                  sellMid: sellPut.mid,
+                  buyMid: buyPut.mid,
+                  premium: Math.max(0, premium),
+                  premiumPerContract: Math.max(0, Math.round(premium * 100)),
+                  maxLoss: Math.round((actualWidth - Math.max(0, premium)) * 100),
+                  sellIV: sellPut.iv,
+                  buyIV: buyPut.iv,
+                };
+              }
+            }
+
+            // CALL CREDIT SPREAD
+            const callSellTarget = roundToStrike(range.high, 'up');
+            const sellCall = findContractPrice(chains.calls, callSellTarget, 'call', 10);
+            const buyCall = sellCall
+              ? findContractPrice(chains.calls, sellCall.strike + SPREAD_WIDTH, 'call', 10)
+              : null;
+            if (sellCall && buyCall && sellCall.strike !== buyCall.strike) {
+              const premium = Math.round((sellCall.mid - buyCall.mid) * 100) / 100;
+              const actualWidth = buyCall.strike - sellCall.strike;
+              callRow.ranges[rangeName] = {
+                sellStrike: sellCall.strike,
+                buyStrike: buyCall.strike,
+                sellMid: sellCall.mid,
+                buyMid: buyCall.mid,
+                premium: Math.max(0, premium),
+                premiumPerContract: Math.max(0, Math.round(premium * 100)),
+                maxLoss: Math.round((actualWidth - Math.max(0, premium)) * 100),
+                sellIV: sellCall.iv,
+                buyIV: buyCall.iv,
+              };
+            }
+          }
+
+          putSpreads.push(putRow);
+          callSpreads.push(callRow);
+        }
+
+        results[ticker] = { putSpreads, callSpreads, spreadWidth: SPREAD_WIDTH };
+        console.log(`[credit-spreads/batch] ${ticker} done (${putSpreads.length} horizons)`);
+      } catch (err) {
+        console.warn(`[credit-spreads/batch] ${ticker} failed: ${err.message}`);
+        failed.push({ ticker, error: err.message });
+      }
+    }
+
+    res.json({ results, failed: failed.length > 0 ? failed : undefined });
+  } catch (err) {
+    console.error('[credit-spreads/batch] Error:', err);
+    res.status(500).json({ error: `Failed to compute batch credit spreads: ${err.message}` });
+  }
+});
+
 module.exports = router;

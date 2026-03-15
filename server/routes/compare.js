@@ -4,7 +4,7 @@ const { computeForecast } = require('../../src/forecast');
 const { upsertIV, getIVHistory } = require('../ivHistory');
 const { autoBackfillIfNeeded } = require('../ivBackfill');
 const { getEasternDate, ensureIVHistoryTable } = require('../db');
-const { buildComparison, generateNarrative } = require('../compare');
+const { buildComparison, generateNarrative, generatePremiumNarrative } = require('../compare');
 
 const router = express.Router();
 
@@ -97,6 +97,35 @@ router.post('/narrative', async (req, res) => {
   } catch (err) {
     console.error('[compare/narrative] Error:', err);
     res.status(500).json({ error: 'Failed to generate narrative' });
+  }
+});
+
+/**
+ * POST /api/compare/premium-narrative
+ * Body: { comparison: { tickers: [...] }, spreadsByTicker: { AAPL: {...}, ... } }
+ *
+ * Premium-aware AI narrative: analyzes both volatility metrics AND real
+ * credit spread pricing across tickers.
+ */
+router.post('/premium-narrative', async (req, res) => {
+  try {
+    const { comparison, spreadsByTicker } = req.body;
+    if (!comparison?.tickers || comparison.tickers.length < 2) {
+      return res.status(400).json({ error: 'Valid comparison data required' });
+    }
+    if (!spreadsByTicker || typeof spreadsByTicker !== 'object') {
+      return res.status(400).json({ error: 'Credit spread pricing data required' });
+    }
+
+    const narrative = await generatePremiumNarrative(comparison, spreadsByTicker);
+    if (!narrative) {
+      return res.status(400).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    }
+
+    res.json({ narrative });
+  } catch (err) {
+    console.error('[compare/premium-narrative] Error:', err);
+    res.status(500).json({ error: 'Failed to generate premium-aware narrative' });
   }
 });
 

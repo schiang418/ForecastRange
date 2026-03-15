@@ -192,4 +192,121 @@ Be direct and actionable. Use specific numbers from the data. Do not use headers
   }
 }
 
-module.exports = { buildComparison, generateNarrative };
+/**
+ * Generate a premium-aware AI narrative using Claude API.
+ * Includes both volatility metrics AND real credit spread pricing per ticker.
+ *
+ * @param {Object} comparison - Output from buildComparison()
+ * @param {Object} spreadsByTicker - { AAPL: { putSpreads, callSpreads, spreadWidth }, ... }
+ * @returns {Promise<string|null>} Narrative text or null
+ */
+async function generatePremiumNarrative(comparison, spreadsByTicker) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey });
+
+    // Build per-ticker summaries with both vol metrics and spread pricing
+    const tickerBlocks = comparison.tickers.map(t => {
+      const lines = [];
+      lines.push(`--- ${t.ticker} (Rank #${t.rank}) ---`);
+      lines.push(`Spot: $${t.spot.toFixed(2)}`);
+      lines.push(`IV: ${t.currentIV ?? 'N/A'}%, RV: ${t.rv20 ?? 'N/A'}%, IV/RV: ${t.ivRvRatio?.toFixed(2) ?? 'N/A'}x`);
+      lines.push(`IV Percentile: ${t.ivPercentile ?? 'N/A'}%, IV Rank: ${t.ivRank ?? 'N/A'}%`);
+      lines.push(`Regime: ${t.regime}, Premium Score: ${t.premiumScore ?? 'N/A'}/100 (${t.premiumLabel ?? 'N/A'})`);
+      lines.push(`Trend Score: ${t.trendScore != null ? t.trendScore.toFixed(3) : 'N/A'}, 1W Move: ${t.weekMove ?? 'N/A'}%, Skew: ${t.weekSkew ?? 'N/A'}`);
+
+      // Add credit spread pricing if available
+      const spreads = spreadsByTicker[t.ticker];
+      if (spreads && (spreads.putSpreads?.length > 0 || spreads.callSpreads?.length > 0)) {
+        lines.push('');
+        lines.push(`Credit Spread Pricing (Width: $${spreads.spreadWidth}):`);
+
+        const formatRows = (rows, type) => {
+          for (const row of rows) {
+            lines.push(`  ${row.horizon}:`);
+            let hasAny = false;
+            for (const [rangeName, label] of [['range50', '50%'], ['range68', '68%'], ['range90', '90%']]) {
+              const cell = row.ranges[rangeName];
+              if (!cell) continue;
+              hasAny = true;
+              const returnOnRisk = cell.maxLoss > 0
+                ? ((cell.premiumPerContract / cell.maxLoss) * 100).toFixed(1) + '%'
+                : 'N/A';
+              lines.push(`    ${label} ${type.toUpperCase()}: Sell $${cell.sellStrike} / Buy $${cell.buyStrike} — Premium $${cell.premiumPerContract}/contract, Max Loss $${cell.maxLoss}, RoR: ${returnOnRisk}${cell.sellIV != null ? ', Sell IV: ' + (cell.sellIV * 100).toFixed(1) + '%' : ''}`);
+            }
+            if (!hasAny) {
+              lines.push(`    No ${type} pricing available`);
+            }
+          }
+        };
+
+        formatRows(spreads.putSpreads, 'put');
+        formatRows(spreads.callSpreads, 'call');
+      } else {
+        lines.push('');
+        lines.push('Credit Spread Pricing: NOT AVAILABLE — no options chain data or pricing fetch failed for this ticker.');
+      }
+
+      return lines.join('\n');
+    }).join('\n\n');
+
+    const message = await client.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 2048,
+      system: `You are an expert options analyst specializing in credit spreads for premium collection.
+
+You are comparing multiple tickers for a trader deciding WHERE to sell credit spreads. You have TWO types of data per ticker:
+1. VOLATILITY METRICS — IV, RV, IV/RV ratio, IV percentile, regime, premium score, trend
+2. REAL CREDIT SPREAD PRICING — actual put and call credit spread premiums at the 50%, 68%, and 90% probability boundaries with return-on-risk ratios
+
+Your job: determine which ticker(s) offer the best premium selling opportunities by analyzing BOTH the volatility profile AND the actual achievable premiums.
+
+Key principles:
+- A high premium score with thin actual premiums (<$0.15/share) is misleading — the real pricing is what matters.
+- Compare return-on-risk (premium/maxLoss) across tickers to find the best bang for the capital.
+- A ticker with lower premium score but better actual credit spread pricing may be the better trade.
+- Consider which probability band (50%, 68%, 90%) gives the best risk/reward per ticker.
+- Factor in trend/skew: bullish tickers favor put spreads, bearish favor call spreads.
+- Flag any tickers where pricing data is missing or incomplete — DO NOT guess or assume premiums. Clearly state what data is unavailable and explain how this limits your analysis for that ticker.
+- If a ticker has no credit spread pricing, you can still evaluate it on volatility metrics alone but explicitly note this limitation.
+
+IMPORTANT: Be factually accurate. Only cite numbers that appear in the data. If data is missing for a ticker, say so clearly — never fabricate premium amounts or strike prices. When comparing, only compare tickers that have actual pricing data available.
+
+Output format:
+
+**CROSS-TICKER PREMIUM COMPARISON:**
+For each ticker with pricing data, highlight the best spread setup (put or call, which probability band) and its return-on-risk. Note any tickers without pricing data.
+
+**BEST TRADE: [TICKER] — [PUT/CALL CREDIT SPREAD]**
+- Specific setup: Sell [strike] / Buy [strike], [expiration]
+- Premium: $[X]/contract, Max Loss: $[X], Return on Risk: [X]%
+- Why this ticker wins: [compare actual premiums AND vol profile vs others]
+
+**RUNNER-UP: [TICKER]** (if applicable)
+- Why it's second: [brief comparison]
+
+**AVOID: [TICKER(S)]** (if applicable)
+- Why: [thin premiums, poor risk/reward, missing data, etc.]
+
+**RISK FACTORS:**
+- Per-ticker warnings (regime, trend against the spread, thin liquidity)
+- Any data gaps that affect the analysis
+
+Be direct and specific. Use the actual numbers from the pricing data.`,
+      messages: [{
+        role: 'user',
+        content: `Compare these tickers for premium selling using both volatility metrics and real credit spread pricing:\n\n${tickerBlocks}`,
+      }],
+    });
+
+    return message.content[0]?.text ?? null;
+  } catch (err) {
+    console.warn(`[compare] Claude API premium narrative failed: ${err.message}`);
+    return null;
+  }
+}
+
+module.exports = { buildComparison, generateNarrative, generatePremiumNarrative };
