@@ -22,6 +22,7 @@ app.use('/api/forecast/spreads', spreadsRouter);
 app.use('/api/chart', chartRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/forecast/credit-spread-pricing', creditSpreadsRouter);
+app.use('/api/forecast/credit-spreads', creditSpreadsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
