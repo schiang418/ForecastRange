@@ -14,11 +14,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.forecastrange.app",
+      "buildNumber": "10",
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
     "android": {
@@ -30,10 +35,21 @@
       },
       "package": "com.forecastrange.app"
     },
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "plugins": [
       "expo-apple-authentication",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9ede77b1-a186-4b6b-94e4-c6bf50e38d81"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9ede77b1-a186-4b6b-94e4-c6bf50e38d81"
+    }
   }
 }
