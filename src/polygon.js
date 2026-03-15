@@ -342,12 +342,14 @@ function findContractPrice(contracts, targetStrike, contractType, maxDist = 5) {
   // Multiple price fallbacks for better coverage
   // On weekends/off-hours, live quotes may be empty — fall back to day/prev close
   let mid = best.last_quote?.midpoint;
-  if (!mid || mid <= 0) mid = (bid + ask) / 2;
-  if (!mid || mid <= 0) mid = best.fair_market_value ?? 0;
-  if (!mid || mid <= 0) mid = best.last_trade?.price ?? 0;
-  if (!mid || mid <= 0) mid = best.day?.close ?? 0;
-  if (!mid || mid <= 0) mid = best.day?.last_trade_price ?? 0;
-  if (!mid || mid <= 0) mid = best.prev_day?.close ?? 0;
+  let priceSource = 'quote_midpoint';
+  if (!mid || mid <= 0) { mid = (bid + ask) / 2; priceSource = 'quote_bid_ask'; }
+  if (!mid || mid <= 0) { mid = best.fair_market_value ?? 0; priceSource = 'fair_market_value'; }
+  if (!mid || mid <= 0) { mid = best.last_trade?.price ?? 0; priceSource = 'last_trade'; }
+  if (!mid || mid <= 0) { mid = best.day?.close ?? 0; priceSource = 'day_close'; }
+  if (!mid || mid <= 0) { mid = best.day?.last_trade_price ?? 0; priceSource = 'day_last_trade'; }
+  if (!mid || mid <= 0) { mid = best.prev_day?.close ?? 0; priceSource = 'prev_day_close'; }
+  if (!mid || mid <= 0) { priceSource = 'none'; }
 
   return {
     strike: best.details.strike_price,
@@ -357,6 +359,7 @@ function findContractPrice(contracts, targetStrike, contractType, maxDist = 5) {
     iv: best.implied_volatility ?? null,
     volume: best.day?.volume ?? 0,
     openInterest: best.open_interest ?? 0,
+    priceSource,
   };
 }
 

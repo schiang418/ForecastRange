@@ -572,7 +572,7 @@ export default function CompareSection() {
                                   if (!cell) return <div key={rn} className="pl-2 text-red-400/70">{rn}: no data</div>;
                                   return (
                                     <div key={rn} className="pl-2">
-                                      {rn}: Sell ${cell.sellStrike} (mid:{cell.sellMid}) / Buy ${cell.buyStrike} (mid:{cell.buyMid}) → prem: ${cell.premium} (${cell.premiumPerContract}/ct), maxLoss: ${cell.maxLoss}
+                                      {rn}: Sell ${cell.sellStrike} (mid:{cell.sellMid}{cell.sellPriceSource ? ` [${cell.sellPriceSource}]` : ''}) / Buy ${cell.buyStrike} (mid:{cell.buyMid}{cell.buyPriceSource ? ` [${cell.buyPriceSource}]` : ''}) → prem: ${cell.premium} (${cell.premiumPerContract}/ct), maxLoss: ${cell.maxLoss}
                                     </div>
                                   );
                                 })}
@@ -590,7 +590,7 @@ export default function CompareSection() {
                                   if (!cell) return <div key={rn} className="pl-2 text-red-400/70">{rn}: no data</div>;
                                   return (
                                     <div key={rn} className="pl-2">
-                                      {rn}: Sell ${cell.sellStrike} (mid:{cell.sellMid}) / Buy ${cell.buyStrike} (mid:{cell.buyMid}) → prem: ${cell.premium} (${cell.premiumPerContract}/ct), maxLoss: ${cell.maxLoss}
+                                      {rn}: Sell ${cell.sellStrike} (mid:{cell.sellMid}{cell.sellPriceSource ? ` [${cell.sellPriceSource}]` : ''}) / Buy ${cell.buyStrike} (mid:{cell.buyMid}{cell.buyPriceSource ? ` [${cell.buyPriceSource}]` : ''}) → prem: ${cell.premium} (${cell.premiumPerContract}/ct), maxLoss: ${cell.maxLoss}
                                     </div>
                                   );
                                 })}

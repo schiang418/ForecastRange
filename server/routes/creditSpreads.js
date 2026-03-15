@@ -91,6 +91,8 @@ router.post('/', async (req, res) => {
               maxLoss: Math.round((actualWidth - Math.max(0, premium)) * 100),
               sellIV: sellPut.iv,
               buyIV: buyPut.iv,
+              sellPriceSource: sellPut.priceSource,
+              buyPriceSource: buyPut.priceSource,
             };
           }
         }
@@ -116,6 +118,8 @@ router.post('/', async (req, res) => {
             maxLoss: Math.round((actualWidth - Math.max(0, premium)) * 100),
             sellIV: sellCall.iv,
             buyIV: buyCall.iv,
+            sellPriceSource: sellCall.priceSource,
+            buyPriceSource: buyCall.priceSource,
           };
         }
       }
@@ -248,6 +252,8 @@ router.post('/batch', async (req, res) => {
                   maxLoss: Math.round((actualWidth - Math.max(0, premium)) * 100),
                   sellIV: sellPut.iv,
                   buyIV: buyPut.iv,
+                  sellPriceSource: sellPut.priceSource,
+                  buyPriceSource: buyPut.priceSource,
                 };
               }
             }
@@ -271,6 +277,8 @@ router.post('/batch', async (req, res) => {
                 maxLoss: Math.round((actualWidth - Math.max(0, premium)) * 100),
                 sellIV: sellCall.iv,
                 buyIV: buyCall.iv,
+                sellPriceSource: sellCall.priceSource,
+                buyPriceSource: buyCall.priceSource,
               };
             }
           }
