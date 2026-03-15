@@ -8,7 +8,7 @@ import PriceHistoryChart from './PriceHistoryChart';
 import UpcomingEvents from './UpcomingEvents';
 import PremiumChecklist from './PremiumChecklist';
 import CreditSpreadTable from './CreditSpreadTable';
-import { downloadForecastMarkdown } from '../exportMarkdown';
+import { downloadForecastMarkdown, downloadAnalysisMarkdown } from '../exportMarkdown';
 
 type ViewTab = 'all' | '1' | '2' | '3' | '4';
 
@@ -532,17 +532,25 @@ export default function ForecastSection() {
                 <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap prose-invert mb-4">
                   {spreadAnalysis}
                 </div>
-                <button
-                  onClick={handleSpreadAnalysis}
-                  disabled={spreadLoading}
-                  className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
-                >
-                  {spreadLoading ? (
-                    <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
-                  ) : (
-                    'Regenerate Analysis'
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSpreadAnalysis}
+                    disabled={spreadLoading}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
+                  >
+                    {spreadLoading ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                    ) : (
+                      'Regenerate Analysis'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => downloadAnalysisMarkdown(spreadAnalysis!, `${result!.ticker}_credit_spread_analysis_${new Date().toISOString().slice(0, 10)}.md`)}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
+                  >
+                    <Download className="w-3 h-3" />Download .md
+                  </button>
+                </div>
               </>
             ) : (
               <div className="flex items-center justify-between">
@@ -585,17 +593,25 @@ export default function ForecastSection() {
                 <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap prose-invert mb-4">
                   {premiumAnalysis}
                 </div>
-                <button
-                  onClick={handlePremiumAwareAnalysis}
-                  disabled={premiumAnalysisLoading}
-                  className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
-                >
-                  {premiumAnalysisLoading ? (
-                    <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
-                  ) : (
-                    'Regenerate Analysis'
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handlePremiumAwareAnalysis}
+                    disabled={premiumAnalysisLoading}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
+                  >
+                    {premiumAnalysisLoading ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                    ) : (
+                      'Regenerate Analysis'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => downloadAnalysisMarkdown(premiumAnalysis!, `${result!.ticker}_premium_aware_analysis_${new Date().toISOString().slice(0, 10)}.md`)}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
+                  >
+                    <Download className="w-3 h-3" />Download .md
+                  </button>
+                </div>
               </>
             ) : (
               <div className="flex items-center justify-between">
