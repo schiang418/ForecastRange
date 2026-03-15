@@ -279,7 +279,24 @@ router.post('/batch', async (req, res) => {
           callSpreads.push(callRow);
         }
 
-        results[ticker] = { putSpreads, callSpreads, spreadWidth: SPREAD_WIDTH };
+        // Collect debug info: what expirations were fetched, how many contracts, sample pricing fields
+        const _debug = {
+          expirations: Object.entries(chainsByExpiration).map(([exp, chains]) => ({
+            exp,
+            puts: chains.puts.length,
+            calls: chains.calls.length,
+            samplePut: chains.puts[0] ? {
+              strike: chains.puts[0].details?.strike_price,
+              last_quote: chains.puts[0].last_quote,
+              fair_market_value: chains.puts[0].fair_market_value,
+              last_trade_price: chains.puts[0].last_trade?.price,
+              day_close: chains.puts[0].day?.close,
+              prev_day_close: chains.puts[0].prev_day?.close,
+              implied_volatility: chains.puts[0].implied_volatility,
+            } : null,
+          })),
+        };
+        results[ticker] = { putSpreads, callSpreads, spreadWidth: SPREAD_WIDTH, _debug };
         console.log(`[credit-spreads/batch] ${ticker} done (${putSpreads.length} horizons)`);
       } catch (err) {
         console.warn(`[credit-spreads/batch] ${ticker} failed: ${err.message}`);
