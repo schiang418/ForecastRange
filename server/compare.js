@@ -175,7 +175,7 @@ async function generateNarrative(comparison) {
 
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: `You are a concise options analyst specializing in premium selling strategies.
 Write a 2-4 paragraph comparison of the tickers below for a trader looking to sell options premium.
 Focus on: which ticker offers the best risk/reward for premium selling and why,
@@ -257,7 +257,7 @@ async function generatePremiumNarrative(comparison, spreadsByTicker) {
 
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: `You are an expert options analyst specializing in credit spreads for premium collection.
 
 You are comparing multiple tickers for a trader deciding WHERE to sell credit spreads. You have TWO types of data per ticker:
