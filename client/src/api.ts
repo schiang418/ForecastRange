@@ -404,6 +404,47 @@ export async function fetchPremiumAwareSpreadAnalysis(forecast: ForecastResult, 
   return data.analysis;
 }
 
+export interface BatchCreditSpreadsResult {
+  results: Record<string, CreditSpreadPricingResult>;
+  failed?: { ticker: string; error: string }[];
+}
+
+export async function fetchBatchCreditSpreads(
+  tickers: { ticker: string; spot: number; horizons: ForecastHorizon[] }[]
+): Promise<BatchCreditSpreadsResult> {
+  const res = await fetch('/api/forecast/credit-spreads/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tickers }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to fetch batch credit spreads (${res.status})`);
+  }
+
+  return res.json();
+}
+
+export async function fetchPremiumNarrative(
+  comparison: CompareResult['comparison'],
+  spreadsByTicker: Record<string, CreditSpreadPricingResult>
+): Promise<string> {
+  const res = await fetch('/api/compare/premium-narrative', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comparison, spreadsByTicker }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(data.error || `Failed to generate premium-aware narrative (${res.status})`);
+  }
+
+  const data = await res.json();
+  return data.narrative;
+}
+
 export async function fetchForecast(ticker: string, horizons?: number[]): Promise<ForecastResult> {
   const res = await fetch('/api/forecast', {
     method: 'POST',

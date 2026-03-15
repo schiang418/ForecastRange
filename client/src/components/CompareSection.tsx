@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Loader2, AlertCircle, Download, Trophy, Plus, X, Info } from 'lucide-react';
-import { fetchComparison, fetchNarrative, CompareResult, CompareTickerResult } from '../api';
+import { fetchComparison, fetchNarrative, fetchBatchCreditSpreads, fetchPremiumNarrative, CompareResult, CompareTickerResult, CreditSpreadPricingResult } from '../api';
 
 // --- Tooltip descriptions ---
 const TOOLTIPS = {
@@ -138,6 +138,22 @@ function downloadComparisonMarkdown(result: CompareResult) {
   URL.revokeObjectURL(url);
 }
 
+/** Get the next Friday date string (YYYY-MM-DD), offset by N weeks from now. */
+function getNextFriday(weeksAhead: number): string {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
+  const friday = new Date(now);
+  friday.setDate(now.getDate() + daysUntilFriday + (weeksAhead - 1) * 7);
+  return friday.toISOString().slice(0, 10);
+}
+
+/** Compute a simple price range from spot, expectedMovePct, and sigma multiplier. */
+function computeRange(spot: number, movePct: number, sigma: number): { low: number; high: number } {
+  const move = spot * (movePct / 100) * sigma;
+  return { low: spot - move, high: spot + move };
+}
+
 export default function CompareSection() {
   const [tickers, setTickers] = useState<string[]>(['', '']);
   const [loading, setLoading] = useState(false);
@@ -145,6 +161,11 @@ export default function CompareSection() {
   const [result, setResult] = useState<CompareResult | null>(null);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [narrativeError, setNarrativeError] = useState<string | null>(null);
+  const [premiumNarrative, setPremiumNarrative] = useState<string | null>(null);
+  const [premiumNarrativeLoading, setPremiumNarrativeLoading] = useState(false);
+  const [premiumNarrativeError, setPremiumNarrativeError] = useState<string | null>(null);
+  const [premiumNarrativeProgress, setPremiumNarrativeProgress] = useState<string | null>(null);
+  const [spreadsByTicker, setSpreadsByTicker] = useState<Record<string, CreditSpreadPricingResult> | null>(null);
 
   const addTicker = () => {
     if (tickers.length < 10) {
@@ -175,6 +196,10 @@ export default function CompareSection() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setPremiumNarrative(null);
+    setPremiumNarrativeError(null);
+    setPremiumNarrativeProgress(null);
+    setSpreadsByTicker(null);
 
     try {
       const data = await fetchComparison(cleanTickers);
@@ -197,6 +222,67 @@ export default function CompareSection() {
       setNarrativeError(err.message || 'Failed to generate narrative');
     } finally {
       setNarrativeLoading(false);
+    }
+  };
+
+  const handlePremiumNarrative = async () => {
+    if (!result) return;
+    setPremiumNarrativeLoading(true);
+    setPremiumNarrativeError(null);
+    setPremiumNarrativeProgress(null);
+
+    try {
+      // Step 1: Fetch credit spreads for all tickers (sequential on server)
+      let spreads = spreadsByTicker;
+      if (!spreads) {
+        const tickerCount = result.comparison.tickers.length;
+        setPremiumNarrativeProgress(`Fetching credit spread pricing for ${tickerCount} tickers (sequential to avoid rate limits)...`);
+
+        const batchInput = result.comparison.tickers.map(t => ({
+          ticker: t.ticker,
+          spot: t.spot,
+          horizons: [
+            // Build minimal horizon objects for 1W and 2W from comparison data
+            ...(t.weekMove != null ? [{
+              horizon: '1W',
+              horizonWeeks: 1,
+              horizonDays: 7,
+              targetDate: getNextFriday(1),
+              expectedMove: t.weekMove * t.spot / 100,
+              expectedMovePct: t.weekMove,
+              range50: computeRange(t.spot, t.weekMove, 0.6745),
+              range68: computeRange(t.spot, t.weekMove, 1.0),
+              range90: computeRange(t.spot, t.weekMove, 1.645),
+            }] : []),
+            ...(t.weekMove != null ? [{
+              horizon: '2W',
+              horizonWeeks: 2,
+              horizonDays: 14,
+              targetDate: getNextFriday(2),
+              expectedMove: t.weekMove * t.spot / 100 * Math.SQRT2,
+              expectedMovePct: t.weekMove * Math.SQRT2,
+              range50: computeRange(t.spot, t.weekMove * Math.SQRT2, 0.6745),
+              range68: computeRange(t.spot, t.weekMove * Math.SQRT2, 1.0),
+              range90: computeRange(t.spot, t.weekMove * Math.SQRT2, 1.645),
+            }] : []),
+          ],
+        }));
+
+        const batchResult = await fetchBatchCreditSpreads(batchInput);
+        spreads = batchResult.results;
+        setSpreadsByTicker(spreads);
+      }
+
+      // Step 2: Send to AI
+      setPremiumNarrativeProgress('Generating premium-aware AI analysis...');
+      const narrative = await fetchPremiumNarrative(result.comparison, spreads);
+      setPremiumNarrative(narrative);
+      setPremiumNarrativeProgress(null);
+    } catch (err: any) {
+      setPremiumNarrativeError(err.message || 'Failed to generate premium-aware analysis');
+      setPremiumNarrativeProgress(null);
+    } finally {
+      setPremiumNarrativeLoading(false);
     }
   };
 
@@ -433,6 +519,58 @@ export default function CompareSection() {
             )}
             {narrativeError && (
               <p className="mt-3 text-xs text-red-400">{narrativeError}</p>
+            )}
+          </div>
+
+          {/* Premium-Aware AI Narrative */}
+          <div className="bg-surface-card border border-edge rounded-lg p-5">
+            {premiumNarrative ? (
+              <>
+                <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <span className="text-green-400">Premium-Aware AI Analysis</span>
+                  <span className="text-xs text-dim font-normal">(Claude + Live Pricing)</span>
+                </h2>
+                <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap mb-4">
+                  {premiumNarrative}
+                </div>
+                <button
+                  onClick={handlePremiumNarrative}
+                  disabled={premiumNarrativeLoading}
+                  className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
+                >
+                  {premiumNarrativeLoading ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                  ) : (
+                    'Regenerate'
+                  )}
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">Premium-Aware AI Analysis</h2>
+                  <p className="text-xs text-dim mt-1">
+                    Compare tickers using <strong>real credit spread premiums</strong> — fetches live option pricing for each ticker (sequentially to avoid rate limits), then AI analyzes actual risk/reward.
+                  </p>
+                </div>
+                <button
+                  onClick={handlePremiumNarrative}
+                  disabled={premiumNarrativeLoading}
+                  className="px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 flex-shrink-0 ml-4"
+                >
+                  {premiumNarrativeLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" />{premiumNarrativeProgress ? 'Working...' : 'Analyzing...'}</>
+                  ) : (
+                    'Analyze with Pricing'
+                  )}
+                </button>
+              </div>
+            )}
+            {premiumNarrativeProgress && premiumNarrativeLoading && (
+              <p className="mt-3 text-xs text-accent">{premiumNarrativeProgress}</p>
+            )}
+            {premiumNarrativeError && (
+              <p className="mt-3 text-xs text-red-400">{premiumNarrativeError}</p>
             )}
           </div>
 
