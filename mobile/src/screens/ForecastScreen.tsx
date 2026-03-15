@@ -19,6 +19,7 @@ export default function ForecastScreen() {
     forecast, loading, error,
     fetchForecast, fetchSpreadAnalysis, spreadAnalysis,
     fetchCreditSpreads, creditSpreads, creditSpreadsLoading, creditSpreadsError,
+    fetchPremiumAnalysis, premiumAnalysis, premiumAnalysisLoading, premiumAnalysisError,
   } = useForecastStore();
 
   const handleSubmit = () => {
@@ -140,7 +141,48 @@ export default function ForecastScreen() {
               </>
             )}
 
-            {/* AI Spread Analysis Button */}
+            {/* Premium-Aware Analysis Button (uses real pricing) */}
+            <Pressable
+              style={[styles.premiumAnalysisButton, premiumAnalysisLoading && styles.buttonDisabled]}
+              onPress={() => fetchPremiumAnalysis(forecast)}
+              disabled={premiumAnalysisLoading}
+            >
+              {premiumAnalysisLoading ? (
+                <View style={styles.premiumAnalysisButtonInner}>
+                  <ActivityIndicator size="small" color={colors.white} />
+                  <Text style={styles.premiumAnalysisButtonText}>
+                    {creditSpreads ? 'Analyzing...' : 'Fetching pricing & analyzing...'}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.premiumAnalysisButtonText}>
+                  {premiumAnalysis ? 'Refresh Analysis with Pricing' : 'Analyze with Pricing'}
+                </Text>
+              )}
+            </Pressable>
+            <Text style={styles.premiumAnalysisHint}>
+              AI analysis using forecast data + real option premiums
+            </Text>
+
+            {premiumAnalysisError && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{premiumAnalysisError}</Text>
+              </View>
+            )}
+
+            {premiumAnalysis && (
+              <View style={styles.premiumAnalysisBox}>
+                <Text style={styles.premiumAnalysisTitle}>
+                  Premium-Aware Spread Analysis
+                </Text>
+                <Text style={styles.premiumAnalysisSubtitle}>
+                  Claude + Live Pricing
+                </Text>
+                <Text style={styles.spreadText}>{premiumAnalysis}</Text>
+              </View>
+            )}
+
+            {/* AI Spread Analysis Button (basic, without pricing) */}
             <Pressable
               style={styles.spreadButton}
               onPress={() => fetchSpreadAnalysis(forecast)}
@@ -268,6 +310,50 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.textMuted,
     fontSize: fontSize.sm,
+  },
+  premiumAnalysisButton: {
+    height: 48,
+    backgroundColor: colors.green,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
+  premiumAnalysisButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  premiumAnalysisButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  premiumAnalysisHint: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  premiumAnalysisBox: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.green,
+  },
+  premiumAnalysisTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    color: colors.green,
+    marginBottom: spacing.xs,
+  },
+  premiumAnalysisSubtitle: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginBottom: spacing.md,
   },
   spreadButton: {
     height: 48,

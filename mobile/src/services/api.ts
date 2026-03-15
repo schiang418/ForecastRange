@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../config';
 import {
   ForecastResult, CompareResult, ChartResult, ChartPeriod,
   EventsResult, CreditSpreadPricingResult, ForecastHorizon,
+  BatchCreditSpreadsResult,
 } from '../types/forecast';
 
 const TOKEN_KEY = 'auth_token';
@@ -94,6 +95,39 @@ class ApiClient {
       timeout: 120000, // 2 minutes — credit spread pricing fetches many individual contracts
     });
     return data;
+  }
+
+  // ── Premium-Aware Analysis ─────────────────────────────────
+
+  async fetchPremiumAwareSpreadAnalysis(
+    forecast: ForecastResult,
+    creditSpreads: CreditSpreadPricingResult
+  ): Promise<string> {
+    const { data } = await this.client.post('/api/forecast/spreads/premium-aware', {
+      forecast,
+      creditSpreads,
+    }, { timeout: 120000 });
+    return data.analysis;
+  }
+
+  async fetchBatchCreditSpreads(
+    tickers: { ticker: string; spot: number; horizons: ForecastHorizon[] }[]
+  ): Promise<BatchCreditSpreadsResult> {
+    const { data } = await this.client.post('/api/forecast/credit-spreads/batch', {
+      tickers,
+    }, { timeout: 300000 }); // 5 minutes — sequential fetching for many tickers
+    return data;
+  }
+
+  async fetchPremiumNarrative(
+    comparison: CompareResult['comparison'],
+    spreadsByTicker: Record<string, CreditSpreadPricingResult>
+  ): Promise<string> {
+    const { data } = await this.client.post('/api/compare/premium-narrative', {
+      comparison,
+      spreadsByTicker,
+    }, { timeout: 120000 });
+    return data.narrative;
   }
 
   // ── Compare ───────────────────────────────────────────────

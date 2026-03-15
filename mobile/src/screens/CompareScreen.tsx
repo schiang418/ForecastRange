@@ -117,7 +117,11 @@ function RankCard({ item }: { item: CompareTickerResult }) {
 
 export default function CompareScreen() {
   const [input, setInput] = useState('');
-  const { comparison, loading, error, fetchComparison, fetchNarrative, narrativeLoading } = useForecastStore();
+  const {
+    comparison, loading, error, fetchComparison, fetchNarrative, narrativeLoading,
+    fetchPremiumNarrative, premiumNarrative, premiumNarrativeLoading,
+    premiumNarrativeError, premiumNarrativeProgress,
+  } = useForecastStore();
 
   const handleSubmit = () => {
     const tickers = input
@@ -215,6 +219,55 @@ export default function CompareScreen() {
                 </Pressable>
               </View>
               <Text style={styles.narrativeText}>{comparison.narrative}</Text>
+            </View>
+          )}
+        </>
+      )}
+
+      {/* Premium-Aware AI Analysis */}
+      {comparison && (
+        <>
+          <Pressable
+            style={[styles.premiumNarrativeButton, premiumNarrativeLoading && styles.buttonDisabled]}
+            onPress={() => fetchPremiumNarrative(comparison)}
+            disabled={premiumNarrativeLoading}
+          >
+            {premiumNarrativeLoading ? (
+              <View style={styles.premiumNarrativeButtonInner}>
+                <ActivityIndicator size="small" color={colors.white} />
+                <Text style={styles.premiumNarrativeButtonText}>
+                  {premiumNarrativeProgress || 'Working...'}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.premiumNarrativeButtonText}>
+                {premiumNarrative ? 'Refresh Analysis with Pricing' : 'Analyze with Pricing'}
+              </Text>
+            )}
+          </Pressable>
+          <Text style={styles.premiumNarrativeHint}>
+            Compare tickers using real credit spread premiums from live option pricing
+          </Text>
+
+          {premiumNarrativeError && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{premiumNarrativeError}</Text>
+            </View>
+          )}
+
+          {premiumNarrative && (
+            <View style={styles.premiumNarrativeBox}>
+              <View style={styles.narrativeHeader}>
+                <Text style={styles.premiumNarrativeTitle}>Premium-Aware AI Analysis</Text>
+                <Pressable
+                  style={styles.regenerateBtn}
+                  onPress={() => fetchPremiumNarrative(comparison)}
+                  disabled={premiumNarrativeLoading}
+                >
+                  <Text style={styles.regenerateText}>Regenerate</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.narrativeText}>{premiumNarrative}</Text>
             </View>
           )}
         </>
@@ -445,6 +498,44 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  premiumNarrativeButton: {
+    height: 48,
+    backgroundColor: colors.green,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
+  premiumNarrativeButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  premiumNarrativeButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  premiumNarrativeHint: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  premiumNarrativeBox: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.green,
+  },
+  premiumNarrativeTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    color: colors.green,
   },
   failedBox: {
     backgroundColor: '#3b1818',
