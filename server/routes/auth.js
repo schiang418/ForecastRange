@@ -1,9 +1,14 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const appleSignin = require('apple-signin-auth');
+const fetch = require('node-fetch');
 const { OAuth2Client } = require('google-auth-library');
 const { getDb, ensureAuthTables } = require('../db');
 const { sql } = require('drizzle-orm');
+
+// Fix: Node 18+ built-in fetch (undici) fails on some platforms (Railway).
+// Inject node-fetch instead so Apple public key retrieval works reliably.
+appleSignin._setFetch(fetch);
 
 const router = express.Router();
 
@@ -43,6 +48,15 @@ async function findOrCreateUser(provider, providerId, email, name) {
   return result.rows[0];
 }
 
+async function findExistingUser(provider, providerId) {
+  await ensureAuthTables();
+  const db = getDb();
+  const existing = await db.execute(
+    sql`SELECT id, email, name FROM users WHERE provider = ${provider} AND provider_id = ${providerId} LIMIT 1`
+  );
+  return (existing.rows && existing.rows.length > 0) ? existing.rows[0] : null;
+}
+
 function checkAllowlist(email) {
   if (ALLOWED_EMAILS.length === 0) return true; // no restriction if empty
   return ALLOWED_EMAILS.includes(email);
@@ -67,17 +81,25 @@ router.post('/apple', async (req, res) => {
       ? `${fullName.givenName} ${fullName.familyName || ''}`.trim()
       : null;
 
-    if (!checkAllowlist(email)) {
+    // Allow returning users even if their email doesn't match the allowlist
+    // (e.g. Apple relay emails, or email hidden on subsequent sign-ins)
+    const existingUser = await findExistingUser('apple', payload.sub);
+    if (!existingUser && !checkAllowlist(email)) {
       return res.status(403).json({ error: 'Access restricted' });
     }
 
-    const user = await findOrCreateUser('apple', payload.sub, email, name);
+    const user = existingUser || await findOrCreateUser('apple', payload.sub, email, name);
     const token = signToken(user.id);
 
     res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
   } catch (err) {
-    console.error('[auth/apple] Error:', err.message);
-    res.status(401).json({ error: 'Invalid Apple identity token' });
+    console.error('[auth/apple] Error:', err.message, err.stack?.split('\n')[1]?.trim());
+    const msg = err.message?.includes('audience')
+      ? 'Bundle ID mismatch — check APPLE_BUNDLE_ID env var'
+      : err.message?.includes('expired')
+        ? 'Apple token expired'
+        : 'Invalid Apple identity token';
+    res.status(401).json({ error: msg });
   }
 });
 
