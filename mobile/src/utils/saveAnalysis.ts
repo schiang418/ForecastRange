@@ -1,6 +1,6 @@
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system/next';
 import * as Sharing from 'expo-sharing';
-import { Alert, Platform } from 'react-native';
+import { Alert } from 'react-native';
 
 function timestamp(): string {
   const d = new Date();
@@ -18,18 +18,20 @@ export async function saveAnalysisAsMarkdown(
 ): Promise<void> {
   const ts = timestamp();
   const fileName = `${sanitize(filePrefix)}_${ts}.md`;
-  const filePath = `${FileSystem.documentDirectory}${fileName}`;
 
   const markdown = `# ${title}\n\n_Generated: ${new Date().toLocaleString()}_\n\n---\n\n${content}\n`;
 
   try {
-    await FileSystem.writeAsStringAsync(filePath, markdown, {
-      encoding: 'utf8' as any,
-    });
+    const file = new File(Paths.document, fileName);
+    if (file.exists) {
+      file.delete();
+    }
+    file.create();
+    file.write(markdown);
 
     const sharingAvailable = await Sharing.isAvailableAsync();
     if (sharingAvailable) {
-      await Sharing.shareAsync(filePath, {
+      await Sharing.shareAsync(file.uri, {
         mimeType: 'text/markdown',
         dialogTitle: `Save ${title}`,
         UTI: 'net.daringfireball.markdown',
