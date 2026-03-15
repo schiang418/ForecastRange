@@ -238,7 +238,7 @@ async function generatePremiumNarrative(comparison, spreadsByTicker) {
 
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 1500,
+      max_tokens: 4096,
       system: `You are a concise options analyst specializing in premium selling strategies.
 Write a 2-4 paragraph comparison of the tickers below for a trader looking to sell options premium.
 You have REAL credit spread pricing data — use actual premiums and dollar amounts in your analysis.

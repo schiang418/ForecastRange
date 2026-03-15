@@ -56,7 +56,7 @@ export default function VolatilityCard({ metrics }: VolatilityCardProps) {
         <Text style={[styles.value, {
           color: metrics.volPremium !== null && metrics.volPremium > 0 ? colors.green : colors.red
         }]}>
-          {metrics.volPremium !== null ? `${(metrics.volPremium * 100).toFixed(1)}pp` : '—'}
+          {metrics.volPremium !== null ? `${metrics.volPremium.toFixed(1)}pp` : '—'}
         </Text>
       </View>
 

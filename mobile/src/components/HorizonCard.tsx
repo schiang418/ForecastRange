@@ -41,7 +41,7 @@ export default function HorizonCard({ horizon }: HorizonCardProps) {
       <View style={styles.row}>
         <Text style={styles.label}>Expected Move</Text>
         <Text style={styles.value}>
-          ${formatPrice(horizon.expectedMove)} ({(horizon.expectedMovePct * 100).toFixed(1)}%)
+          ${formatPrice(horizon.expectedMove)} ({horizon.expectedMovePct.toFixed(1)}%)
         </Text>
       </View>
 
