@@ -374,7 +374,7 @@ export interface CreditSpreadPricingResult {
 }
 
 export async function fetchCreditSpreads(ticker: string, horizons: ForecastHorizon[], spot: number): Promise<CreditSpreadPricingResult> {
-  const res = await fetch('/api/forecast/credit-spreads', {
+  const res = await fetch('/api/forecast/credit-spread-pricing', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ticker, horizons, spot }),
@@ -412,7 +412,7 @@ export interface BatchCreditSpreadsResult {
 export async function fetchBatchCreditSpreads(
   tickers: { ticker: string; spot: number; horizons: ForecastHorizon[] }[]
 ): Promise<BatchCreditSpreadsResult> {
-  const res = await fetch('/api/forecast/credit-spreads/batch', {
+  const res = await fetch('/api/forecast/credit-spread-pricing/batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tickers }),
