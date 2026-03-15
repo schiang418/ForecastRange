@@ -141,6 +141,25 @@ export default function ForecastScreen() {
               </>
             )}
 
+            {/* AI Spread Analysis Button (basic, without pricing) */}
+            <Pressable
+              style={styles.spreadButton}
+              onPress={() => fetchSpreadAnalysis(forecast)}
+              disabled={loading}
+            >
+              <Text style={styles.spreadButtonText}>
+                {spreadAnalysis ? 'Refresh AI Spread Analysis' : 'Get AI Credit Spread Analysis'}
+              </Text>
+            </Pressable>
+
+            {/* Spread Analysis Result */}
+            {spreadAnalysis && (
+              <View style={styles.spreadBox}>
+                <Text style={styles.spreadTitle}>AI Credit Spread Analysis</Text>
+                <Text style={styles.spreadText}>{spreadAnalysis}</Text>
+              </View>
+            )}
+
             {/* Premium-Aware Analysis Button (uses real pricing) */}
             <Pressable
               style={[styles.premiumAnalysisButton, premiumAnalysisLoading && styles.buttonDisabled]}
@@ -179,25 +198,6 @@ export default function ForecastScreen() {
                   Claude + Live Pricing
                 </Text>
                 <Text style={styles.spreadText}>{premiumAnalysis}</Text>
-              </View>
-            )}
-
-            {/* AI Spread Analysis Button (basic, without pricing) */}
-            <Pressable
-              style={styles.spreadButton}
-              onPress={() => fetchSpreadAnalysis(forecast)}
-              disabled={loading}
-            >
-              <Text style={styles.spreadButtonText}>
-                {spreadAnalysis ? 'Refresh AI Spread Analysis' : 'Get AI Credit Spread Analysis'}
-              </Text>
-            </Pressable>
-
-            {/* Spread Analysis Result */}
-            {spreadAnalysis && (
-              <View style={styles.spreadBox}>
-                <Text style={styles.spreadTitle}>AI Credit Spread Analysis</Text>
-                <Text style={styles.spreadText}>{spreadAnalysis}</Text>
               </View>
             )}
           </>

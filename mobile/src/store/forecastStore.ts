@@ -155,12 +155,19 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
       // Fetch credit spreads first if not already loaded
       let spreads = get().creditSpreads;
       if (!spreads) {
+        console.log(`[premiumAnalysis] Fetching credit spreads for ${forecast.ticker}, spot=${forecast.spot}, horizons=${forecast.horizons.length}`);
         spreads = await api.fetchCreditSpreads(forecast.ticker, forecast.horizons, forecast.spot);
+        console.log(`[premiumAnalysis] Credit spreads received: ${spreads.putSpreads.length} put rows, ${spreads.callSpreads.length} call rows`);
         set({ creditSpreads: spreads });
+      } else {
+        console.log(`[premiumAnalysis] Using cached credit spreads`);
       }
+      console.log(`[premiumAnalysis] Calling premium-aware analysis endpoint...`);
       const analysis = await api.fetchPremiumAwareSpreadAnalysis(forecast, spreads);
+      console.log(`[premiumAnalysis] Analysis received, length=${analysis.length}`);
       set({ premiumAnalysis: analysis, premiumAnalysisLoading: false });
     } catch (error: any) {
+      console.error(`[premiumAnalysis] Error:`, error.response?.status, error.response?.data?.error || error.message);
       set({
         premiumAnalysisLoading: false,
         premiumAnalysisError: error.response?.data?.error || error.message,
@@ -181,6 +188,11 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
         const tickersWithHorizons = comparison.comparison.tickers.filter(
           (t) => t.horizons && t.horizons.length > 0
         );
+        console.log(`[premiumNarrative] Tickers: ${comparison.comparison.tickers.length}, with horizons: ${tickersWithHorizons.length}`);
+        comparison.comparison.tickers.forEach((t) => {
+          console.log(`[premiumNarrative]   ${t.ticker}: horizons=${t.horizons?.length ?? 0}`);
+        });
+
         if (tickersWithHorizons.length === 0) {
           throw new Error('No horizon data available. Please re-run the comparison.');
         }
@@ -195,20 +207,27 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
           horizons: t.horizons!,
         }));
 
+        console.log(`[premiumNarrative] Calling batch credit spreads for: ${batchInput.map(t => t.ticker).join(', ')}`);
         const batchResult = await api.fetchBatchCreditSpreads(batchInput);
         spreads = batchResult.results;
+        console.log(`[premiumNarrative] Batch results received for: ${Object.keys(spreads).join(', ')}`);
         set({ spreadsByTicker: spreads });
+      } else {
+        console.log(`[premiumNarrative] Using cached spreads for: ${Object.keys(spreads).join(', ')}`);
       }
 
       // Step 2: Send to AI
       set({ premiumNarrativeProgress: 'Generating premium-aware AI analysis...' });
+      console.log(`[premiumNarrative] Calling premium narrative endpoint...`);
       const narrative = await api.fetchPremiumNarrative(comparison.comparison, spreads);
+      console.log(`[premiumNarrative] Narrative received, length=${narrative.length}`);
       set({
         premiumNarrative: narrative,
         premiumNarrativeLoading: false,
         premiumNarrativeProgress: null,
       });
     } catch (error: any) {
+      console.error(`[premiumNarrative] Error:`, error.response?.status, error.response?.data?.error || error.message);
       set({
         premiumNarrativeLoading: false,
         premiumNarrativeError: error.response?.data?.error || error.message,

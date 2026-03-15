@@ -161,4 +161,101 @@ async function runSingleForecast(ticker) {
   }
 }
 
+/**
+ * POST /api/compare/premium-narrative
+ * Body: { comparison: { tickers: [...] }, spreadsByTicker: { AAPL: {...}, ... } }
+ *
+ * Generates AI narrative using both comparison data and real credit spread pricing.
+ */
+router.post('/premium-narrative', async (req, res) => {
+  try {
+    const { comparison, spreadsByTicker } = req.body;
+    if (!comparison?.tickers || comparison.tickers.length < 2) {
+      return res.status(400).json({ error: 'Valid comparison data required' });
+    }
+    if (!spreadsByTicker || Object.keys(spreadsByTicker).length === 0) {
+      return res.status(400).json({ error: 'Credit spread pricing data required' });
+    }
+
+    console.log(`[compare/premium-narrative] Generating for ${comparison.tickers.length} tickers with pricing data for: ${Object.keys(spreadsByTicker).join(', ')}`);
+
+    const narrative = await generatePremiumNarrative(comparison, spreadsByTicker);
+    if (!narrative) {
+      return res.status(400).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    }
+
+    console.log(`[compare/premium-narrative] Done, narrative length: ${narrative.length}`);
+    res.json({ narrative });
+  } catch (err) {
+    console.error('[compare/premium-narrative] Error:', err);
+    res.status(500).json({ error: 'Failed to generate premium-aware narrative' });
+  }
+});
+
+/**
+ * Generate a premium-aware AI narrative using Claude API.
+ * Includes real credit spread pricing in the analysis.
+ */
+async function generatePremiumNarrative(comparison, spreadsByTicker) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey });
+
+    const tickerSummaries = comparison.tickers.map(t => {
+      let summary =
+        `${t.ticker} (Rank #${t.rank}): ` +
+        `IV=${t.currentIV ?? 'N/A'}%, RV=${t.rv20 ?? 'N/A'}%, ` +
+        `IV/RV=${t.ivRvRatio ?? 'N/A'}x, ` +
+        `IV Pctl=${t.ivPercentile ?? 'N/A'}%, IV Rank=${t.ivRank ?? 'N/A'}%, ` +
+        `Regime=${t.regime}, Premium Score=${t.premiumScore ?? 'N/A'}/100 (${t.premiumLabel ?? 'N/A'}), ` +
+        `1W Expected Move=${t.weekMove ?? 'N/A'}%, Trend Score=${t.trendScore != null ? t.trendScore.toFixed(3) : 'N/A'}, ` +
+        `Skew=${t.weekSkew ?? 'N/A'}`;
+
+      // Add pricing data if available
+      const spreads = spreadsByTicker[t.ticker];
+      if (spreads) {
+        const putRow = spreads.putSpreads?.[0]; // 1W horizon
+        const callRow = spreads.callSpreads?.[0];
+        if (putRow) {
+          const r68 = putRow.ranges?.range68;
+          if (r68) {
+            summary += ` | 1W Put Spread (68%): Sell $${r68.sellStrike}/Buy $${r68.buyStrike}, Premium $${r68.premiumPerContract}/contract`;
+          }
+        }
+        if (callRow) {
+          const r68 = callRow.ranges?.range68;
+          if (r68) {
+            summary += ` | 1W Call Spread (68%): Sell $${r68.sellStrike}/Buy $${r68.buyStrike}, Premium $${r68.premiumPerContract}/contract`;
+          }
+        }
+      }
+
+      return summary;
+    }).join('\n');
+
+    const message = await client.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 1500,
+      system: `You are a concise options analyst specializing in premium selling strategies.
+Write a 2-4 paragraph comparison of the tickers below for a trader looking to sell options premium.
+You have REAL credit spread pricing data — use actual premiums and dollar amounts in your analysis.
+Focus on: which ticker offers the best risk/reward for premium selling and why,
+key differences in their volatility profiles, actual premium available, and any warnings.
+Be direct and actionable. Use specific numbers from the data. Do not use headers or bullet points.`,
+      messages: [{
+        role: 'user',
+        content: `Compare these tickers for premium selling (includes live option pricing):\n\n${tickerSummaries}`,
+      }],
+    });
+
+    return message.content[0]?.text ?? null;
+  } catch (err) {
+    console.warn(`[compare/premium-narrative] Claude API failed: ${err.message}`);
+    return null;
+  }
+}
+
 module.exports = router;
