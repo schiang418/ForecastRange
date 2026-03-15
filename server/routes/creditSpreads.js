@@ -189,6 +189,19 @@ router.post('/batch', async (req, res) => {
             fetchOptionsForExpiration(ticker, exp, 'call').catch(() => []),
           ]);
           chainsByExpiration[exp] = { puts, calls };
+          console.log(`[credit-spreads/batch] ${ticker} exp=${exp}: ${puts.length} puts, ${calls.length} calls`);
+          // Log first contract's price fields for debugging
+          const sample = puts[0] || calls[0];
+          if (sample) {
+            console.log(`[credit-spreads/batch] ${ticker} sample contract price fields:`, JSON.stringify({
+              last_quote: sample.last_quote,
+              fair_market_value: sample.fair_market_value,
+              last_trade: sample.last_trade ? { price: sample.last_trade.price } : null,
+              day: sample.day ? { close: sample.day.close, last_trade_price: sample.day.last_trade_price } : null,
+              prev_day: sample.prev_day ? { close: sample.prev_day.close } : null,
+              implied_volatility: sample.implied_volatility,
+            }));
+          }
           // Small delay between expirations within a ticker
           await new Promise(r => setTimeout(r, 300));
         }
