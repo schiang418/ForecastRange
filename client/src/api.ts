@@ -207,6 +207,7 @@ export interface CompareTickerResult {
     regimeScore: number;
   };
   verdict: string;
+  horizons?: ForecastHorizon[];
 }
 
 export interface CompareResult {

@@ -36,6 +36,8 @@ function buildComparison(forecasts) {
     // Options availability
     ivAvailable: f.result.ivAvailable ?? false,
     straddleAvailable: f.result.straddleAvailable ?? false,
+    // Real horizons (1W/2W) for credit spread pricing
+    horizons: (f.result.horizons || []).filter(h => h.horizonWeeks <= 2),
   }));
 
   // Rank tickers by premium selling attractiveness

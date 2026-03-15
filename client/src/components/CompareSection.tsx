@@ -138,22 +138,6 @@ function downloadComparisonMarkdown(result: CompareResult) {
   URL.revokeObjectURL(url);
 }
 
-/** Get the next Friday date string (YYYY-MM-DD), offset by N weeks from now. */
-function getNextFriday(weeksAhead: number): string {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
-  const friday = new Date(now);
-  friday.setDate(now.getDate() + daysUntilFriday + (weeksAhead - 1) * 7);
-  return friday.toISOString().slice(0, 10);
-}
-
-/** Compute a simple price range from spot, expectedMovePct, and sigma multiplier. */
-function computeRange(spot: number, movePct: number, sigma: number): { low: number; high: number } {
-  const move = spot * (movePct / 100) * sigma;
-  return { low: spot - move, high: spot + move };
-}
-
 export default function CompareSection() {
   const [tickers, setTickers] = useState<string[]>(['', '']);
   const [loading, setLoading] = useState(false);
@@ -235,37 +219,17 @@ export default function CompareSection() {
       // Step 1: Fetch credit spreads for all tickers (sequential on server)
       let spreads = spreadsByTicker;
       if (!spreads) {
-        const tickerCount = result.comparison.tickers.length;
-        setPremiumNarrativeProgress(`Fetching credit spread pricing for ${tickerCount} tickers (sequential to avoid rate limits)...`);
+        const tickersWithHorizons = result.comparison.tickers.filter(t => t.horizons && t.horizons.length > 0);
+        if (tickersWithHorizons.length === 0) {
+          throw new Error('No horizon data available. Please re-run the comparison.');
+        }
 
-        const batchInput = result.comparison.tickers.map(t => ({
+        setPremiumNarrativeProgress(`Fetching credit spread pricing for ${tickersWithHorizons.length} tickers (sequential to avoid rate limits)...`);
+
+        const batchInput = tickersWithHorizons.map(t => ({
           ticker: t.ticker,
           spot: t.spot,
-          horizons: [
-            // Build minimal horizon objects for 1W and 2W from comparison data
-            ...(t.weekMove != null ? [{
-              horizon: '1W',
-              horizonWeeks: 1,
-              horizonDays: 7,
-              targetDate: getNextFriday(1),
-              expectedMove: t.weekMove * t.spot / 100,
-              expectedMovePct: t.weekMove,
-              range50: computeRange(t.spot, t.weekMove, 0.6745),
-              range68: computeRange(t.spot, t.weekMove, 1.0),
-              range90: computeRange(t.spot, t.weekMove, 1.645),
-            }] : []),
-            ...(t.weekMove != null ? [{
-              horizon: '2W',
-              horizonWeeks: 2,
-              horizonDays: 14,
-              targetDate: getNextFriday(2),
-              expectedMove: t.weekMove * t.spot / 100 * Math.SQRT2,
-              expectedMovePct: t.weekMove * Math.SQRT2,
-              range50: computeRange(t.spot, t.weekMove * Math.SQRT2, 0.6745),
-              range68: computeRange(t.spot, t.weekMove * Math.SQRT2, 1.0),
-              range90: computeRange(t.spot, t.weekMove * Math.SQRT2, 1.645),
-            }] : []),
-          ],
+          horizons: t.horizons!,
         }));
 
         const batchResult = await fetchBatchCreditSpreads(batchInput);
@@ -573,6 +537,66 @@ export default function CompareSection() {
               <p className="mt-3 text-xs text-red-400">{premiumNarrativeError}</p>
             )}
           </div>
+
+          {/* Premium Spread Debug Info */}
+          {spreadsByTicker && (
+            <div className="bg-surface-card border border-edge rounded-lg p-4">
+              <details>
+                <summary className="text-xs text-dim cursor-pointer hover:text-primary">
+                  Credit Spread Pricing Debug ({Object.keys(spreadsByTicker).length} tickers)
+                </summary>
+                <div className="mt-3 space-y-3">
+                  {Object.entries(spreadsByTicker).map(([ticker, data]) => (
+                    <div key={ticker}>
+                      <div className="text-xs font-bold text-accent mb-1">{ticker} (width: ${data.spreadWidth})</div>
+                      {data.putSpreads.length === 0 && data.callSpreads.length === 0 ? (
+                        <div className="text-xs text-red-400 pl-2">No spread data returned</div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {/* Put spreads */}
+                          <div>
+                            <div className="text-xs text-dim font-medium mb-1">PUT Spreads:</div>
+                            {data.putSpreads.map((row, i) => (
+                              <div key={i} className="text-[10px] font-mono text-dim pl-2 mb-1">
+                                <div>{row.horizon} (exp: {row.targetDate}):</div>
+                                {['range50', 'range68', 'range90'].map(rn => {
+                                  const cell = (row.ranges as any)[rn];
+                                  if (!cell) return <div key={rn} className="pl-2 text-red-400/70">{rn}: no data</div>;
+                                  return (
+                                    <div key={rn} className="pl-2">
+                                      {rn}: Sell ${cell.sellStrike} (mid:{cell.sellMid}) / Buy ${cell.buyStrike} (mid:{cell.buyMid}) → prem: ${cell.premium} (${cell.premiumPerContract}/ct), maxLoss: ${cell.maxLoss}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                          {/* Call spreads */}
+                          <div>
+                            <div className="text-xs text-dim font-medium mb-1">CALL Spreads:</div>
+                            {data.callSpreads.map((row, i) => (
+                              <div key={i} className="text-[10px] font-mono text-dim pl-2 mb-1">
+                                <div>{row.horizon} (exp: {row.targetDate}):</div>
+                                {['range50', 'range68', 'range90'].map(rn => {
+                                  const cell = (row.ranges as any)[rn];
+                                  if (!cell) return <div key={rn} className="pl-2 text-red-400/70">{rn}: no data</div>;
+                                  return (
+                                    <div key={rn} className="pl-2">
+                                      {rn}: Sell ${cell.sellStrike} (mid:{cell.sellMid}) / Buy ${cell.buyStrike} (mid:{cell.buyMid}) → prem: ${cell.premium} (${cell.premiumPerContract}/ct), maxLoss: ${cell.maxLoss}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+          )}
 
           {/* Download */}
           <div className="flex justify-end">
