@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Loader2, AlertCircle, Download, Trophy, Plus, X, Info } from 'lucide-react';
 import { fetchComparison, fetchNarrative, fetchBatchCreditSpreads, fetchPremiumNarrative, CompareResult, CompareTickerResult, CreditSpreadPricingResult } from '../api';
+import { downloadAnalysisMarkdown } from '../exportMarkdown';
 
 // --- Tooltip descriptions ---
 const TOOLTIPS = {
@@ -450,17 +451,28 @@ export default function CompareSection() {
                 <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap mb-4">
                   {result.narrative}
                 </div>
-                <button
-                  onClick={handleRunNarrative}
-                  disabled={narrativeLoading}
-                  className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
-                >
-                  {narrativeLoading ? (
-                    <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
-                  ) : (
-                    'Regenerate'
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleRunNarrative}
+                    disabled={narrativeLoading}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
+                  >
+                    {narrativeLoading ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                    ) : (
+                      'Regenerate'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const tks = result!.comparison.tickers.map(t => t.ticker).join('-');
+                      downloadAnalysisMarkdown(result!.narrative!, `compare_ai_analysis_${tks}_${new Date().toISOString().slice(0, 10)}.md`);
+                    }}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
+                  >
+                    <Download className="w-3 h-3" />Download .md
+                  </button>
+                </div>
               </>
             ) : (
               <div className="flex items-center justify-between">
@@ -497,17 +509,28 @@ export default function CompareSection() {
                 <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap mb-4">
                   {premiumNarrative}
                 </div>
-                <button
-                  onClick={handlePremiumNarrative}
-                  disabled={premiumNarrativeLoading}
-                  className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
-                >
-                  {premiumNarrativeLoading ? (
-                    <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
-                  ) : (
-                    'Regenerate'
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handlePremiumNarrative}
+                    disabled={premiumNarrativeLoading}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
+                  >
+                    {premiumNarrativeLoading ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                    ) : (
+                      'Regenerate'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const tks = result!.comparison.tickers.map(t => t.ticker).join('-');
+                      downloadAnalysisMarkdown(premiumNarrative!, `compare_premium_analysis_${tks}_${new Date().toISOString().slice(0, 10)}.md`);
+                    }}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
+                  >
+                    <Download className="w-3 h-3" />Download .md
+                  </button>
+                </div>
               </>
             ) : (
               <div className="flex items-center justify-between">
