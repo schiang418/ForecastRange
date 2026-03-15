@@ -22,11 +22,25 @@ interface ForecastState {
   loading: boolean;
   error: string | null;
 
+  // Premium-aware analysis (single ticker)
+  premiumAnalysis: string | null;
+  premiumAnalysisLoading: boolean;
+  premiumAnalysisError: string | null;
+
+  // Premium-aware narrative (multi-ticker)
+  premiumNarrative: string | null;
+  premiumNarrativeLoading: boolean;
+  premiumNarrativeError: string | null;
+  premiumNarrativeProgress: string | null;
+  spreadsByTicker: Record<string, CreditSpreadPricingResult> | null;
+
   fetchForecast: (ticker: string) => Promise<void>;
   fetchComparison: (tickers: string[]) => Promise<void>;
   fetchSpreadAnalysis: (forecast: ForecastResult) => Promise<void>;
   fetchCreditSpreads: (forecast: ForecastResult) => Promise<void>;
   fetchNarrative: (comparison: CompareResult) => Promise<void>;
+  fetchPremiumAnalysis: (forecast: ForecastResult) => Promise<void>;
+  fetchPremiumNarrative: (comparison: CompareResult) => Promise<void>;
   clearError: () => void;
 }
 
@@ -41,8 +55,24 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
   loading: false,
   error: null,
 
+  // Premium-aware analysis (single ticker)
+  premiumAnalysis: null,
+  premiumAnalysisLoading: false,
+  premiumAnalysisError: null,
+
+  // Premium-aware narrative (multi-ticker)
+  premiumNarrative: null,
+  premiumNarrativeLoading: false,
+  premiumNarrativeError: null,
+  premiumNarrativeProgress: null,
+  spreadsByTicker: null,
+
   fetchForecast: async (ticker: string) => {
-    set({ loading: true, error: null, spreadAnalysis: null, creditSpreads: null, creditSpreadsError: null });
+    set({
+      loading: true, error: null,
+      spreadAnalysis: null, creditSpreads: null, creditSpreadsError: null,
+      premiumAnalysis: null, premiumAnalysisError: null,
+    });
     try {
       // Check cache
       const cacheRaw = await AsyncStorage.getItem(`${CACHE_KEY}_${ticker}`);
@@ -68,7 +98,11 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
   },
 
   fetchComparison: async (tickers: string[]) => {
-    set({ loading: true, error: null });
+    set({
+      loading: true, error: null,
+      premiumNarrative: null, premiumNarrativeError: null,
+      premiumNarrativeProgress: null, spreadsByTicker: null,
+    });
     try {
       const result = await api.fetchComparison(tickers);
       set({ comparison: result, loading: false });
@@ -112,6 +146,74 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
       }
     } catch (error: any) {
       set({ narrativeLoading: false, error: error.response?.data?.error || error.message });
+    }
+  },
+
+  fetchPremiumAnalysis: async (forecast: ForecastResult) => {
+    set({ premiumAnalysisLoading: true, premiumAnalysisError: null });
+    try {
+      // Fetch credit spreads first if not already loaded
+      let spreads = get().creditSpreads;
+      if (!spreads) {
+        spreads = await api.fetchCreditSpreads(forecast.ticker, forecast.horizons, forecast.spot);
+        set({ creditSpreads: spreads });
+      }
+      const analysis = await api.fetchPremiumAwareSpreadAnalysis(forecast, spreads);
+      set({ premiumAnalysis: analysis, premiumAnalysisLoading: false });
+    } catch (error: any) {
+      set({
+        premiumAnalysisLoading: false,
+        premiumAnalysisError: error.response?.data?.error || error.message,
+      });
+    }
+  },
+
+  fetchPremiumNarrative: async (comparison: CompareResult) => {
+    set({
+      premiumNarrativeLoading: true,
+      premiumNarrativeError: null,
+      premiumNarrativeProgress: null,
+    });
+    try {
+      // Step 1: Fetch credit spreads for all tickers
+      let spreads = get().spreadsByTicker;
+      if (!spreads) {
+        const tickersWithHorizons = comparison.comparison.tickers.filter(
+          (t) => t.horizons && t.horizons.length > 0
+        );
+        if (tickersWithHorizons.length === 0) {
+          throw new Error('No horizon data available. Please re-run the comparison.');
+        }
+
+        set({
+          premiumNarrativeProgress: `Fetching credit spread pricing for ${tickersWithHorizons.length} tickers...`,
+        });
+
+        const batchInput = tickersWithHorizons.map((t) => ({
+          ticker: t.ticker,
+          spot: t.spot,
+          horizons: t.horizons!,
+        }));
+
+        const batchResult = await api.fetchBatchCreditSpreads(batchInput);
+        spreads = batchResult.results;
+        set({ spreadsByTicker: spreads });
+      }
+
+      // Step 2: Send to AI
+      set({ premiumNarrativeProgress: 'Generating premium-aware AI analysis...' });
+      const narrative = await api.fetchPremiumNarrative(comparison.comparison, spreads);
+      set({
+        premiumNarrative: narrative,
+        premiumNarrativeLoading: false,
+        premiumNarrativeProgress: null,
+      });
+    } catch (error: any) {
+      set({
+        premiumNarrativeLoading: false,
+        premiumNarrativeError: error.response?.data?.error || error.message,
+        premiumNarrativeProgress: null,
+      });
     }
   },
 

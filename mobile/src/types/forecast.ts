@@ -195,6 +195,7 @@ export interface CompareTickerResult {
     regimeScore: number;
   };
   verdict: string;
+  horizons?: ForecastHorizon[];
 }
 
 export interface CompareResult {
@@ -281,4 +282,9 @@ export interface CreditSpreadPricingResult {
   putSpreads: CreditSpreadRow[];
   callSpreads: CreditSpreadRow[];
   spreadWidth: number;
+}
+
+export interface BatchCreditSpreadsResult {
+  results: Record<string, CreditSpreadPricingResult>;
+  failed?: { ticker: string; error: string }[];
 }
