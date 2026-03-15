@@ -340,10 +340,14 @@ function findContractPrice(contracts, targetStrike, contractType, maxDist = 5) {
   const bid = best.last_quote?.bid ?? 0;
   const ask = best.last_quote?.ask ?? 0;
   // Multiple price fallbacks for better coverage
+  // On weekends/off-hours, live quotes may be empty — fall back to day/prev close
   let mid = best.last_quote?.midpoint;
   if (!mid || mid <= 0) mid = (bid + ask) / 2;
   if (!mid || mid <= 0) mid = best.fair_market_value ?? 0;
   if (!mid || mid <= 0) mid = best.last_trade?.price ?? 0;
+  if (!mid || mid <= 0) mid = best.day?.close ?? 0;
+  if (!mid || mid <= 0) mid = best.day?.last_trade_price ?? 0;
+  if (!mid || mid <= 0) mid = best.prev_day?.close ?? 0;
 
   return {
     strike: best.details.strike_price,

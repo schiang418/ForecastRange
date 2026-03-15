@@ -546,9 +546,17 @@ export default function CompareSection() {
                   Credit Spread Pricing Debug ({Object.keys(spreadsByTicker).length} tickers)
                 </summary>
                 <div className="mt-3 space-y-3">
-                  {Object.entries(spreadsByTicker).map(([ticker, data]) => (
+                  {Object.entries(spreadsByTicker).map(([ticker, data]: [string, any]) => (
                     <div key={ticker}>
                       <div className="text-xs font-bold text-accent mb-1">{ticker} (width: ${data.spreadWidth})</div>
+                      {data._debug?.expirations?.map((e: any, i: number) => (
+                        <div key={i} className="text-[10px] font-mono text-yellow-400/70 pl-2 mb-1">
+                          exp {e.exp}: {e.puts} puts, {e.calls} calls
+                          {e.samplePut && (
+                            <span> | sample put ${e.samplePut.strike}: quote={JSON.stringify(e.samplePut.last_quote)}, fmv={e.samplePut.fair_market_value}, lastTrade={e.samplePut.last_trade_price}, dayClose={e.samplePut.day_close}, prevClose={e.samplePut.prev_day_close}</span>
+                          )}
+                        </div>
+                      ))}
                       {data.putSpreads.length === 0 && data.callSpreads.length === 0 ? (
                         <div className="text-xs text-red-400 pl-2">No spread data returned</div>
                       ) : (
