@@ -24,7 +24,7 @@ export async function saveAnalysisAsMarkdown(
 
   try {
     await FileSystem.writeAsStringAsync(filePath, markdown, {
-      encoding: FileSystem.EncodingType.UTF8,
+      encoding: 'utf8' as any,
     });
 
     const sharingAvailable = await Sharing.isAvailableAsync();
