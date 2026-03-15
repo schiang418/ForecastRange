@@ -23,6 +23,9 @@ export async function saveAnalysisAsMarkdown(
 
   try {
     const file = new File(Paths.document, fileName);
+    if (file.exists) {
+      file.delete();
+    }
     file.create();
     file.write(markdown);
 
