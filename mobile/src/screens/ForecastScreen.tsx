@@ -12,6 +12,7 @@ import PriceHistoryChart from '../components/PriceHistoryChart';
 import UpcomingEvents from '../components/UpcomingEvents';
 import PremiumChecklist from '../components/PremiumChecklist';
 import CreditSpreadTable from '../components/CreditSpreadTable';
+import TargetPricePercentile from '../components/TargetPricePercentile';
 import { saveAnalysisAsMarkdown } from '../utils/saveAnalysis';
 
 export default function ForecastScreen() {
@@ -98,6 +99,9 @@ export default function ForecastScreen() {
 
             {/* Premium Sell / Avoid Checklist */}
             <PremiumChecklist volatilityMetrics={forecast.volatilityMetrics} ticker={forecast.ticker} />
+
+            {/* Target Price Percentile Lookup */}
+            <TargetPricePercentile horizons={forecast.horizons} spot={forecast.spot} />
 
             {/* Horizons */}
             {forecast.horizons.map((h, i) => (
