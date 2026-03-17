@@ -8,6 +8,7 @@ import PriceHistoryChart from './PriceHistoryChart';
 import UpcomingEvents from './UpcomingEvents';
 import PremiumChecklist from './PremiumChecklist';
 import CreditSpreadTable from './CreditSpreadTable';
+import TargetPricePercentile from './TargetPricePercentile';
 import { downloadForecastMarkdown, downloadAnalysisMarkdown } from '../exportMarkdown';
 
 type ViewTab = 'all' | '1' | '2' | '3' | '4';
@@ -28,6 +29,7 @@ export default function ForecastSection() {
   const [premiumAnalysis, setPremiumAnalysis] = useState<string | null>(null);
   const [premiumAnalysisLoading, setPremiumAnalysisLoading] = useState(false);
   const [premiumAnalysisError, setPremiumAnalysisError] = useState<string | null>(null);
+  const [targetPrice, setTargetPrice] = useState<number | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +45,7 @@ export default function ForecastSection() {
     setCreditSpreadsError(null);
     setPremiumAnalysis(null);
     setPremiumAnalysisError(null);
+    setTargetPrice(null);
 
     try {
       const data = await fetchForecast(cleanTicker);
@@ -395,7 +398,7 @@ export default function ForecastSection() {
           {/* Cone Chart */}
           <div className="bg-surface-card border border-edge rounded-lg p-5">
             <h3 className="text-sm font-medium text-dim mb-4">Forecast Cone</h3>
-            <ForecastConeChart horizons={result.horizons} spot={result.spot} />
+            <ForecastConeChart horizons={result.horizons} spot={result.spot} targetPrice={targetPrice} />
             <div className="flex justify-center gap-6 mt-3 text-xs text-dim">
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 rounded bg-accent/40 inline-block" /> 50% band
@@ -408,6 +411,13 @@ export default function ForecastSection() {
               </span>
             </div>
           </div>
+
+          {/* Target Price Percentile Lookup */}
+          <TargetPricePercentile
+            horizons={result.horizons}
+            spot={result.spot}
+            onTargetPriceChange={setTargetPrice}
+          />
 
           {/* Premium Sell / Avoid Checklist */}
           <PremiumChecklist volatilityMetrics={result.volatilityMetrics} ticker={result.ticker} />
