@@ -158,17 +158,6 @@ export default function ForecastSection() {
         </div>
       </form>
 
-      {/* Target Price Percentile Lookup - shown when forecast results are available */}
-      {result && (
-        <div className="mb-8">
-          <TargetPricePercentile
-            horizons={result.horizons}
-            spot={result.spot}
-            onTargetPriceChange={setTargetPrice}
-          />
-        </div>
-      )}
-
       {/* Error */}
       {error && (
         <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
@@ -422,6 +411,13 @@ export default function ForecastSection() {
               </span>
             </div>
           </div>
+
+          {/* Target Price Percentile Lookup */}
+          <TargetPricePercentile
+            horizons={result.horizons}
+            spot={result.spot}
+            onTargetPriceChange={setTargetPrice}
+          />
 
           {/* Premium Sell / Avoid Checklist */}
           <PremiumChecklist volatilityMetrics={result.volatilityMetrics} ticker={result.ticker} />
