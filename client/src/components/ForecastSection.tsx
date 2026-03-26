@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
-import { Search, TrendingUp, Loader2, AlertCircle, BarChart3, Download } from 'lucide-react';
-import { fetchForecast, ForecastResult } from '../api';
+import { Search, TrendingUp, Loader2, AlertCircle, BarChart3, Download, Scissors } from 'lucide-react';
+import { fetchForecast, fetchSpreadAnalysis, fetchPremiumAwareSpreadAnalysis, fetchCreditSpreads, ForecastResult, CreditSpreadPricingResult } from '../api';
 import ForecastTable from './ForecastTable';
 import ForecastConeChart from './ForecastConeChart';
 import ForecastDetails from './ForecastDetails';
-import { downloadForecastMarkdown } from '../exportMarkdown';
+import PriceHistoryChart from './PriceHistoryChart';
+import UpcomingEvents from './UpcomingEvents';
+import PremiumChecklist from './PremiumChecklist';
+import CreditSpreadTable from './CreditSpreadTable';
+import TargetPricePercentile from './TargetPricePercentile';
+import { downloadForecastMarkdown, downloadAnalysisMarkdown } from '../exportMarkdown';
 
 type ViewTab = 'all' | '1' | '2' | '3' | '4';
 
@@ -15,6 +20,16 @@ export default function ForecastSection() {
   const [result, setResult] = useState<ForecastResult | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>('all');
   const [showDetails, setShowDetails] = useState(false);
+  const [spreadAnalysis, setSpreadAnalysis] = useState<string | null>(null);
+  const [spreadLoading, setSpreadLoading] = useState(false);
+  const [spreadError, setSpreadError] = useState<string | null>(null);
+  const [creditSpreads, setCreditSpreads] = useState<CreditSpreadPricingResult | null>(null);
+  const [creditSpreadsLoading, setCreditSpreadsLoading] = useState(false);
+  const [creditSpreadsError, setCreditSpreadsError] = useState<string | null>(null);
+  const [premiumAnalysis, setPremiumAnalysis] = useState<string | null>(null);
+  const [premiumAnalysisLoading, setPremiumAnalysisLoading] = useState(false);
+  const [premiumAnalysisError, setPremiumAnalysisError] = useState<string | null>(null);
+  const [targetPrice, setTargetPrice] = useState<number | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +39,13 @@ export default function ForecastSection() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setSpreadAnalysis(null);
+    setSpreadError(null);
+    setCreditSpreads(null);
+    setCreditSpreadsError(null);
+    setPremiumAnalysis(null);
+    setPremiumAnalysisError(null);
+    setTargetPrice(null);
 
     try {
       const data = await fetchForecast(cleanTicker);
@@ -33,6 +55,54 @@ export default function ForecastSection() {
       setError(err.message || 'Failed to fetch forecast');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSpreadAnalysis = async () => {
+    if (!result) return;
+    setSpreadLoading(true);
+    setSpreadError(null);
+    try {
+      const analysis = await fetchSpreadAnalysis(result);
+      setSpreadAnalysis(analysis);
+    } catch (err: any) {
+      setSpreadError(err.message || 'Failed to generate spread analysis');
+    } finally {
+      setSpreadLoading(false);
+    }
+  };
+
+  const handleCreditSpreads = async () => {
+    if (!result) return;
+    setCreditSpreadsLoading(true);
+    setCreditSpreadsError(null);
+    try {
+      const data = await fetchCreditSpreads(result.ticker, result.horizons, result.spot);
+      setCreditSpreads(data);
+    } catch (err: any) {
+      setCreditSpreadsError(err.message || 'Failed to fetch credit spreads');
+    } finally {
+      setCreditSpreadsLoading(false);
+    }
+  };
+
+  const handlePremiumAwareAnalysis = async () => {
+    if (!result) return;
+    setPremiumAnalysisLoading(true);
+    setPremiumAnalysisError(null);
+    try {
+      // Fetch credit spreads first if not already loaded
+      let spreads = creditSpreads;
+      if (!spreads) {
+        spreads = await fetchCreditSpreads(result.ticker, result.horizons, result.spot);
+        setCreditSpreads(spreads);
+      }
+      const analysis = await fetchPremiumAwareSpreadAnalysis(result, spreads);
+      setPremiumAnalysis(analysis);
+    } catch (err: any) {
+      setPremiumAnalysisError(err.message || 'Failed to generate premium-aware analysis');
+    } finally {
+      setPremiumAnalysisLoading(false);
     }
   };
 
@@ -268,6 +338,21 @@ export default function ForecastSection() {
                   {result.ivDbError && (
                     <div className="text-red-400/80">DB error: {result.ivDbError}</div>
                   )}
+                  {vm.ivDebug && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-blue-400/70 hover:text-blue-400">IV Debug Diagnostics</summary>
+                      <div className="mt-1 font-mono text-[10px] leading-tight bg-black/30 rounded p-2 space-y-0.5">
+                        <div>Rows: {vm.ivDebug.totalRows} | Current IV: {vm.ivDebug.currentIV != null ? (vm.ivDebug.currentIV * 100).toFixed(1) + '%' : 'N/A'}</div>
+                        <div>Below count: {vm.ivDebug.belowCount}/{vm.ivDebug.totalRows} = {vm.ivDebug.ivPercentileCalc}</div>
+                        <div>IV Rank: {vm.ivDebug.ivRankCalc}</div>
+                        <div>Distribution: P10={vm.ivDebug.distribution.p10}% P25={vm.ivDebug.distribution.p25}% P50={vm.ivDebug.distribution.p50}% P75={vm.ivDebug.distribution.p75}% P90={vm.ivDebug.distribution.p90}%</div>
+                        <div className="mt-0.5">Recent IV history:</div>
+                        {vm.ivDebug.recentEntries.map((e, i) => (
+                          <div key={i} className="pl-2">{e.date}: {e.iv.toFixed(1)}%</div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               </div>
             );
@@ -304,10 +389,16 @@ export default function ForecastSection() {
             })}
           </div>
 
+          {/* Price History Chart */}
+          <PriceHistoryChart ticker={result.ticker} />
+
+          {/* Upcoming Events */}
+          <UpcomingEvents ticker={result.ticker} />
+
           {/* Cone Chart */}
           <div className="bg-surface-card border border-edge rounded-lg p-5">
             <h3 className="text-sm font-medium text-dim mb-4">Forecast Cone</h3>
-            <ForecastConeChart horizons={result.horizons} spot={result.spot} />
+            <ForecastConeChart horizons={result.horizons} spot={result.spot} targetPrice={targetPrice} />
             <div className="flex justify-center gap-6 mt-3 text-xs text-dim">
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 rounded bg-accent/40 inline-block" /> 50% band
@@ -321,10 +412,80 @@ export default function ForecastSection() {
             </div>
           </div>
 
+          {/* Target Price Percentile Lookup */}
+          <TargetPricePercentile
+            horizons={result.horizons}
+            spot={result.spot}
+            onTargetPriceChange={setTargetPrice}
+          />
+
+          {/* Premium Sell / Avoid Checklist */}
+          <PremiumChecklist volatilityMetrics={result.volatilityMetrics} ticker={result.ticker} />
+
           {/* Data Table */}
           <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
             <ForecastTable horizons={filteredHorizons} spot={result.spot} />
           </div>
+
+          {/* Credit Spread Pricing - On Demand */}
+          {!creditSpreads && !creditSpreadsLoading && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCreditSpreads}
+                className="flex items-center gap-2 px-4 py-2 bg-surface-card border border-edge rounded-lg text-sm font-medium text-accent hover:bg-surface-hover transition-colors"
+              >
+                <Scissors size={16} />
+                Load Credit Spread Pricing
+              </button>
+              {creditSpreadsError && (
+                <span className="text-red-400 text-sm">{creditSpreadsError}</span>
+              )}
+            </div>
+          )}
+
+          {creditSpreadsLoading && (
+            <div className="bg-surface-card border border-edge rounded-lg p-6 flex items-center justify-center gap-3">
+              <Loader2 size={20} className="animate-spin text-accent" />
+              <span className="text-sm text-dim">Fetching credit spread pricing...</span>
+            </div>
+          )}
+
+          {creditSpreads && (
+            <>
+              <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
+                <CreditSpreadTable
+                  rows={activeTab === 'all'
+                    ? creditSpreads.putSpreads
+                    : creditSpreads.putSpreads.filter(r => r.horizonWeeks === Number(activeTab))
+                  }
+                  type="put"
+                  spreadWidth={creditSpreads.spreadWidth}
+                />
+              </div>
+              <div className="bg-surface-card border border-edge rounded-lg overflow-hidden">
+                <CreditSpreadTable
+                  rows={activeTab === 'all'
+                    ? creditSpreads.callSpreads
+                    : creditSpreads.callSpreads.filter(r => r.horizonWeeks === Number(activeTab))
+                  }
+                  type="call"
+                  spreadWidth={creditSpreads.spreadWidth}
+                />
+              </div>
+
+              {/* Credit Spread Debug Info (temporary) */}
+              {(creditSpreads as any)._debug && (
+                <div className="bg-surface-card border border-edge rounded-lg p-4">
+                  <details>
+                    <summary className="text-xs text-dim cursor-pointer">Credit Spread Debug Info</summary>
+                    <pre className="text-xs text-dim mt-2 overflow-x-auto whitespace-pre-wrap">
+                      {JSON.stringify((creditSpreads as any)._debug, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              )}
+            </>
+          )}
 
           {/* Calculation Details Toggle + Download */}
           <div className="flex gap-3">
@@ -368,6 +529,128 @@ export default function ForecastSection() {
               />
             </div>
           )}
+
+          {/* Credit Spread Analysis */}
+          <div className="bg-surface-card border border-edge rounded-lg p-5">
+            {spreadAnalysis ? (
+              <>
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Scissors className="w-5 h-5 text-accent" />
+                  <span className="text-accent">Credit Spread Analysis</span>
+                  <span className="text-xs text-dim font-normal">(Claude)</span>
+                </h3>
+                <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap prose-invert mb-4">
+                  {spreadAnalysis}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSpreadAnalysis}
+                    disabled={spreadLoading}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
+                  >
+                    {spreadLoading ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                    ) : (
+                      'Regenerate Analysis'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => downloadAnalysisMarkdown(spreadAnalysis!, `${result!.ticker}_credit_spread_analysis_${new Date().toISOString().slice(0, 10)}.md`)}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-accent transition-colors flex items-center gap-2"
+                  >
+                    <Download className="w-3 h-3" />Download .md
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Scissors className="w-5 h-5 text-dim" />
+                    Credit Spread Analysis
+                  </h3>
+                  <p className="text-xs text-dim mt-1">
+                    Get AI-powered credit spread recommendations based on the forecast ranges, volatility regime, and support/resistance levels.
+                  </p>
+                </div>
+                <button
+                  onClick={handleSpreadAnalysis}
+                  disabled={spreadLoading}
+                  className="px-5 py-2.5 bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 flex-shrink-0 ml-4"
+                >
+                  {spreadLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" />Analyzing...</>
+                  ) : (
+                    'Analyze Spreads'
+                  )}
+                </button>
+              </div>
+            )}
+            {spreadError && (
+              <p className="mt-3 text-xs text-red-400">{spreadError}</p>
+            )}
+          </div>
+
+          {/* Premium-Aware Credit Spread Analysis */}
+          <div className="bg-surface-card border border-edge rounded-lg p-5">
+            {premiumAnalysis ? (
+              <>
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Scissors className="w-5 h-5 text-green-400" />
+                  <span className="text-green-400">Premium-Aware Spread Analysis</span>
+                  <span className="text-xs text-dim font-normal">(Claude + Live Pricing)</span>
+                </h3>
+                <div className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap prose-invert mb-4">
+                  {premiumAnalysis}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handlePremiumAwareAnalysis}
+                    disabled={premiumAnalysisLoading}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
+                  >
+                    {premiumAnalysisLoading ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" />Regenerating...</>
+                    ) : (
+                      'Regenerate Analysis'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => downloadAnalysisMarkdown(premiumAnalysis!, `${result!.ticker}_premium_aware_analysis_${new Date().toISOString().slice(0, 10)}.md`)}
+                    className="px-4 py-2 border border-edge rounded-lg text-xs text-dim hover:text-primary hover:border-green-400 transition-colors flex items-center gap-2"
+                  >
+                    <Download className="w-3 h-3" />Download .md
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Scissors className="w-5 h-5 text-dim" />
+                    Premium-Aware Spread Analysis
+                  </h3>
+                  <p className="text-xs text-dim mt-1">
+                    AI analysis using forecast data <strong>plus real option premiums</strong> — optimizes for actual risk/reward from live market pricing.
+                  </p>
+                </div>
+                <button
+                  onClick={handlePremiumAwareAnalysis}
+                  disabled={premiumAnalysisLoading}
+                  className="px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 flex-shrink-0 ml-4"
+                >
+                  {premiumAnalysisLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" />Analyzing...</>
+                  ) : (
+                    'Analyze with Pricing'
+                  )}
+                </button>
+              </div>
+            )}
+            {premiumAnalysisError && (
+              <p className="mt-3 text-xs text-red-400">{premiumAnalysisError}</p>
+            )}
+          </div>
         </div>
       )}
     </div>

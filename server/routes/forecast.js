@@ -1,9 +1,10 @@
 const express = require('express');
-const { fetchDailyBars, fetchOptionsChain, extractAtmIV } = require('../../src/polygon');
+const { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV, getOptionSnapshot, buildOptionTicker } = require('../../src/polygon');
 const { computeForecast } = require('../../src/forecast');
 const { upsertIV, getIVHistory } = require('../ivHistory');
 const { autoBackfillIfNeeded } = require('../ivBackfill');
-const { getEasternDate } = require('../db');
+const { getEasternDate, ensureIVHistoryTable } = require('../db');
+const { computeCreditSpreadPricing } = require('../../src/creditSpreadPricing');
 
 const router = express.Router();
 
@@ -37,7 +38,7 @@ router.post('/', async (req, res) => {
     // Fetch OHLCV bars and options chain in parallel
     const [bars, optionsChain] = await Promise.all([
       fetchDailyBars(cleanTicker, fromDate, toDate),
-      fetchOptionsChain(cleanTicker).catch(err => {
+      fetchOptionsForExpiration(cleanTicker).catch(err => {
         console.warn(`[forecast] Options chain unavailable for ${cleanTicker}: ${err.message}`);
         return null;
       }),
@@ -57,25 +58,31 @@ router.post('/', async (req, res) => {
 
     const spot = bars[bars.length - 1].c;
 
-    // Auto-backfill IV history if this ticker has < 30 rows.
-    // This runs synchronously on first request so the forecast immediately
-    // benefits from the synthetic IV history for percentile calculations.
+    // --- IV history pipeline ---
+    // 1. Ensure table, 2. Store today's live IV, 3. Backfill if needed, 4. Fetch history
     let ivDbError = null;
+    let ivHistoryRows = null;
+
     if (process.env.DATABASE_URL) {
       try {
+        await ensureIVHistoryTable();
+
+        // Store today's live IV BEFORE backfill/fetch so it's included in percentile
+        if (optionsChain) {
+          const expirationIVs = extractAtmIV(optionsChain, spot);
+          if (expirationIVs && expirationIVs.length > 0) {
+            const todayIV = expirationIVs[0].iv;
+            const today = getEasternDate();
+            await upsertIV(cleanTicker, today, todayIV, 'live');
+          }
+        }
+
         await autoBackfillIfNeeded(cleanTicker, bars, optionsChain, spot);
       } catch (err) {
         ivDbError = `auto-backfill: ${err.message}`;
         console.warn(`[forecast] Auto-backfill failed for ${cleanTicker}: ${err.message}`);
       }
-    } else {
-      ivDbError = 'DATABASE_URL not set — IV history disabled';
-      console.warn(`[forecast] DATABASE_URL not set, skipping IV history for ${cleanTicker}`);
-    }
 
-    // Fetch IV history from DB for true IV percentile calculation
-    let ivHistoryRows = null;
-    if (process.env.DATABASE_URL) {
       try {
         ivHistoryRows = await getIVHistory(cleanTicker, 252);
         console.log(`[forecast] ${cleanTicker}: ${ivHistoryRows.length} IV history rows`);
@@ -83,6 +90,9 @@ router.post('/', async (req, res) => {
         ivDbError = ivDbError || `iv-history fetch: ${err.message}`;
         console.warn(`[forecast] IV history fetch failed for ${cleanTicker}: ${err.message}`);
       }
+    } else {
+      ivDbError = 'DATABASE_URL not set — IV history disabled';
+      console.warn(`[forecast] DATABASE_URL not set, skipping IV history for ${cleanTicker}`);
     }
 
     // Compute forecast
@@ -92,15 +102,6 @@ router.post('/', async (req, res) => {
       ivHistoryRows,
     });
 
-    // Store today's IV snapshot for future percentile calculations (fire-and-forget)
-    if (result.ivTermStructure && result.ivTermStructure.length > 0) {
-      const todayIV = result.ivTermStructure[0].iv; // nearest-expiration ATM IV
-      const today = getEasternDate();
-      upsertIV(cleanTicker, today, todayIV, 'live').catch(err => {
-        console.warn(`[forecast] IV snapshot store failed for ${cleanTicker}: ${err.message}`);
-      });
-    }
-
     if (result.error) {
       return res.status(400).json({ error: result.error });
     }
@@ -109,6 +110,7 @@ router.post('/', async (req, res) => {
     if (ivDbError) {
       result.ivDbError = ivDbError;
     }
+
     res.json(result);
   } catch (err) {
     console.error('[forecast] Error:', err);
@@ -117,6 +119,110 @@ router.post('/', async (req, res) => {
       return res.status(429).json({ error: 'Rate limit exceeded. Please try again in a moment.' });
     }
 
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/forecast/debug-option
+ * Test endpoint to see raw Polygon API response for a single option contract.
+ * Usage: /api/forecast/debug-option?ticker=TSLA&strike=370&exp=2026-03-20&type=P
+ */
+router.get('/debug-option', async (req, res) => {
+  try {
+    const { ticker, strike, exp, type } = req.query;
+    if (!ticker || !strike || !exp || !type) {
+      return res.status(400).json({ error: 'Need ticker, strike, exp, type params' });
+    }
+
+    const putCall = String(type).toUpperCase();
+    const optionTicker = buildOptionTicker(String(ticker).toUpperCase(), String(exp), putCall, Number(strike));
+
+    // Try both API keys
+    const stockKey = process.env.MASSIVE_STOCK_API_KEY;
+    const optionKey = process.env.MASSIVE_API_KEY;
+
+    const results = {};
+
+    // Test with MASSIVE_STOCK_API_KEY
+    if (stockKey) {
+      const url = `https://api.polygon.io/v3/snapshot/options/${ticker}/${optionTicker}?apiKey=${stockKey}`;
+      const r = await fetch(url);
+      results.stockKey = { status: r.status, body: r.ok ? await r.json() : await r.text() };
+    }
+
+    // Test with MASSIVE_API_KEY (if different)
+    if (optionKey && optionKey !== stockKey) {
+      const url = `https://api.polygon.io/v3/snapshot/options/${ticker}/${optionTicker}?apiKey=${optionKey}`;
+      const r = await fetch(url);
+      results.optionKey = { status: r.status, body: r.ok ? await r.json() : await r.text() };
+    }
+
+    // Also try prev close
+    const prevUrl = `https://api.polygon.io/v2/aggs/ticker/${optionTicker}/prev?adjusted=true&apiKey=${stockKey || optionKey}`;
+    const prevRes = await fetch(prevUrl);
+    results.prevClose = { status: prevRes.status, body: prevRes.ok ? await prevRes.json() : await prevRes.text() };
+
+    res.json({
+      optionTicker,
+      envVars: {
+        MASSIVE_STOCK_API_KEY: stockKey ? `${stockKey.slice(0, 4)}...${stockKey.slice(-4)}` : 'NOT SET',
+        MASSIVE_API_KEY: optionKey ? `${optionKey.slice(0, 4)}...${optionKey.slice(-4)}` : 'NOT SET',
+        sameKey: stockKey === optionKey,
+      },
+      results,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/forecast/credit-spreads
+ * Body: { ticker: string, horizons: ForecastHorizon[], spot: number }
+ *
+ * On-demand credit spread pricing — fetches full options chain and
+ * individual contract snapshots for accurate OTM pricing.
+ */
+router.post('/credit-spreads', async (req, res) => {
+  try {
+    const { ticker, horizons, spot } = req.body;
+
+    if (!ticker || !horizons || !spot) {
+      return res.status(400).json({ error: 'ticker, horizons, and spot are required' });
+    }
+
+    const cleanTicker = ticker.toUpperCase().replace(/[^A-Z0-9.]/g, '').slice(0, 10);
+    console.log(`[credit-spreads] Fetching for ${cleanTicker}, spot=${spot}`);
+
+    // Fetch full options chain with pagination for strike discovery
+    const fullChain = await fetchOptionsForExpiration(cleanTicker).catch(err => {
+      console.warn(`[credit-spreads] Full chain fetch failed: ${err.message}`);
+      return [];
+    });
+
+    // Fall back to basic chain if full fetch fails
+    let chainToUse = fullChain;
+    if (!chainToUse || chainToUse.length === 0) {
+      chainToUse = await fetchOptionsChain(cleanTicker).catch(() => []);
+    }
+
+    console.log(`[credit-spreads] ${cleanTicker}: ${chainToUse.length} contracts`);
+
+    if (chainToUse.length === 0) {
+      return res.status(404).json({ error: `No options data for ${cleanTicker}` });
+    }
+
+    const result = await computeCreditSpreadPricing(
+      chainToUse, horizons, spot, cleanTicker, getOptionSnapshot, buildOptionTicker
+    );
+
+    res.json(result);
+  } catch (err) {
+    console.error('[credit-spreads] Error:', err);
+    if (err.message?.includes('429') || err.message?.includes('rate limit')) {
+      return res.status(429).json({ error: 'Rate limit exceeded. Please try again.' });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });

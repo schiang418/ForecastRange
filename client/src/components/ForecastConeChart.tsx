@@ -8,6 +8,7 @@ import { ForecastHorizon } from '../api';
 interface Props {
   horizons: ForecastHorizon[];
   spot: number;
+  targetPrice?: number | null;
 }
 
 function formatChartLabel(h: ForecastHorizon): string {
@@ -18,7 +19,7 @@ function formatChartLabel(h: ForecastHorizon): string {
   return `${mon} ${d} (${h.horizonDays}d)`;
 }
 
-export default function ForecastConeChart({ horizons, spot }: Props) {
+export default function ForecastConeChart({ horizons, spot, targetPrice }: Props) {
   // Build chart data: week 0 (spot) + each horizon
   const data = [
     {
@@ -47,6 +48,7 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
 
   // Calculate Y-axis domain with some padding
   const allValues = data.flatMap(d => [d.range90Low, d.range90High]);
+  if (targetPrice) allValues.push(targetPrice);
   const yMin = Math.floor(Math.min(...allValues) * 0.995);
   const yMax = Math.ceil(Math.max(...allValues) * 1.005);
 
@@ -152,6 +154,16 @@ export default function ForecastConeChart({ horizons, spot }: Props) {
             strokeDasharray="5 5"
             label={{ value: `Spot $${spot.toFixed(2)}`, fill: '#8b8fa3', fontSize: 11, position: 'right' }}
           />
+
+          {/* Target price reference line */}
+          {targetPrice && (
+            <ReferenceLine
+              y={targetPrice}
+              stroke="#f59e0b"
+              strokeDasharray="6 3"
+              label={{ value: `Target $${targetPrice.toFixed(2)}`, fill: '#f59e0b', fontSize: 11, position: 'left' }}
+            />
+          )}
         </AreaChart>
       </ResponsiveContainer>
     </div>

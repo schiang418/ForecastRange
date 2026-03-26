@@ -3,6 +3,11 @@ const express = require('express');
 const path = require('path');
 
 const forecastRouter = require('./routes/forecast');
+const compareRouter = require('./routes/compare');
+const spreadsRouter = require('./routes/spreads');
+const chartRouter = require('./routes/chart');
+const eventsRouter = require('./routes/events');
+const creditSpreadsRouter = require('./routes/creditSpreads');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +17,12 @@ app.use(express.json());
 
 // API Routes
 app.use('/api/forecast', forecastRouter);
+app.use('/api/compare', compareRouter);
+app.use('/api/forecast/spreads', spreadsRouter);
+app.use('/api/chart', chartRouter);
+app.use('/api/events', eventsRouter);
+app.use('/api/forecast/credit-spread-pricing', creditSpreadsRouter);
+app.use('/api/forecast/credit-spreads', creditSpreadsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

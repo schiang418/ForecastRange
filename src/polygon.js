@@ -1,9 +1,15 @@
 const API_BASE = 'https://api.polygon.io';
+const RATE_LIMIT_DELAY = 200;
 
 function getApiKey() {
   const key = process.env.MASSIVE_STOCK_API_KEY;
   if (!key) throw new Error('MASSIVE_STOCK_API_KEY environment variable is not set');
   return key;
+}
+
+// OptionStrategy uses a separate API key for options endpoints (higher-tier plan with quotes)
+function getOptionsApiKey() {
+  return process.env.MASSIVE_API_KEY || getApiKey();
 }
 
 function sleep(ms) {
@@ -48,7 +54,7 @@ async function fetchDailyBars(ticker, fromDate, toDate) {
  * Filterable by strike_price, expiration_date, contract_type.
  */
 async function fetchOptionsChain(ticker, { expirationDate, contractType, strikePrice } = {}) {
-  const apiKey = getApiKey();
+  const apiKey = getOptionsApiKey();
   const params = new URLSearchParams({ apiKey, limit: '250' });
 
   if (expirationDate) params.set('expiration_date', expirationDate);
@@ -212,4 +218,262 @@ function extractAtmStraddle(optionsChain, spotPrice) {
   return results;
 }
 
-module.exports = { fetchDailyBars, fetchOptionsChain, extractAtmIV, extractAtmStraddle, sleep };
+/**
+ * Fetch upcoming dividends for a ticker within a date range.
+ * Returns array of { exDividendDate, payDate, cashAmount, frequency, dividendType }.
+ */
+async function fetchDividends(ticker, fromDate, toDate) {
+  const apiKey = getApiKey();
+  const params = new URLSearchParams({
+    apiKey,
+    ticker,
+    'ex_dividend_date.gte': fromDate,
+    'ex_dividend_date.lte': toDate,
+    limit: '50',
+    order: 'asc',
+    sort: 'ex_dividend_date',
+  });
+  const url = `${API_BASE}/v3/reference/dividends?${params.toString()}`;
+
+  const res = await fetch(url);
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  return (data.results || []).map(d => ({
+    exDividendDate: d.ex_dividend_date,
+    payDate: d.pay_date,
+    cashAmount: d.cash_amount,
+    frequency: d.frequency,
+    dividendType: d.dividend_type,
+  }));
+}
+
+/**
+ * Fetch upcoming stock splits for a ticker within a date range.
+ * Returns array of { executionDate, splitFrom, splitTo }.
+ */
+async function fetchSplits(ticker, fromDate, toDate) {
+  const apiKey = getApiKey();
+  const params = new URLSearchParams({
+    apiKey,
+    ticker,
+    'execution_date.gte': fromDate,
+    'execution_date.lte': toDate,
+    limit: '50',
+    order: 'asc',
+    sort: 'execution_date',
+  });
+  const url = `${API_BASE}/v3/reference/splits?${params.toString()}`;
+
+  const res = await fetch(url);
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  return (data.results || []).map(s => ({
+    executionDate: s.execution_date,
+    splitFrom: s.split_from,
+    splitTo: s.split_to,
+  }));
+}
+
+/**
+ * Fetch options chain snapshot filtered by expiration date and contract type.
+ * Paginates to get all results for the given filters.
+ * Returns array of option contract snapshots.
+ */
+async function fetchOptionsForExpiration(ticker, expirationDate, contractType) {
+  const apiKey = getOptionsApiKey();
+  let allResults = [];
+  let nextUrl = null;
+  const params = new URLSearchParams({ apiKey, limit: '250' });
+  if (expirationDate) params.set('expiration_date', expirationDate);
+  if (contractType) params.set('contract_type', contractType);
+
+  let url = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(ticker)}?${params.toString()}`;
+
+  while (url) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      if (res.status === 404 || res.status === 403) return [];
+      const text = await res.text();
+      throw new Error(`Polygon options API error for ${ticker}: ${res.status} ${text}`);
+    }
+    const data = await res.json();
+    if (data.status === 'ERROR') return allResults;
+    allResults = allResults.concat(data.results || []);
+    nextUrl = data.next_url;
+    url = nextUrl ? `${nextUrl}&apiKey=${apiKey}` : null;
+    // Rate-limit delay between paginated calls to avoid 429s
+    if (url) await new Promise(r => setTimeout(r, 200));
+  }
+  return allResults;
+}
+
+/**
+ * Find the best price for an option contract at or near a target strike.
+ * First tries exact match, then finds the closest available strike within maxDist.
+ * Uses multiple price fallbacks: midpoint → (bid+ask)/2 → fair_market_value → last_trade.
+ * Returns { strike, mid, bid, ask, iv, volume, openInterest } or null.
+ */
+function findContractPrice(contracts, targetStrike, contractType, maxDist = 5) {
+  // Filter to matching contract type
+  const typed = contracts.filter(c =>
+    c.details?.contract_type === contractType &&
+    c.details?.strike_price != null
+  );
+
+  if (typed.length === 0) return null;
+
+  // Find exact match first, then closest within maxDist
+  let best = null;
+  let bestDist = Infinity;
+  for (const c of typed) {
+    const dist = Math.abs(c.details.strike_price - targetStrike);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = c;
+    }
+  }
+
+  if (!best || bestDist > maxDist) return null;
+
+  const bid = best.last_quote?.bid ?? 0;
+  const ask = best.last_quote?.ask ?? 0;
+  // Multiple price fallbacks for better coverage
+  // On weekends/off-hours, live quotes may be empty — fall back to day/prev close
+  let mid = best.last_quote?.midpoint;
+  if (!mid || mid <= 0) mid = (bid + ask) / 2;
+  if (!mid || mid <= 0) mid = best.fair_market_value ?? 0;
+  if (!mid || mid <= 0) mid = best.last_trade?.price ?? 0;
+  if (!mid || mid <= 0) mid = best.day?.close ?? 0;
+  if (!mid || mid <= 0) mid = best.day?.last_trade_price ?? 0;
+  if (!mid || mid <= 0) mid = best.prev_day?.close ?? 0;
+
+  return {
+    strike: best.details.strike_price,
+    mid: Math.round(mid * 100) / 100,
+    bid: Math.round(bid * 100) / 100,
+    ask: Math.round(ask * 100) / 100,
+    iv: best.implied_volatility ?? null,
+    volume: best.day?.volume ?? 0,
+    openInterest: best.open_interest ?? 0,
+  };
+}
+
+/**
+ * Round a price to the nearest standard option strike.
+ * Options typically have strikes at $1, $2.50, $5, or $10 intervals.
+ */
+function roundToStrike(price, direction = 'down') {
+  // Determine strike interval based on price level
+  let interval;
+  if (price < 25) interval = 1;
+  else if (price < 100) interval = 5;
+  else if (price < 500) interval = 5;
+  else interval = 5;
+
+  if (direction === 'down') {
+    return Math.floor(price / interval) * interval;
+  } else {
+    return Math.ceil(price / interval) * interval;
+  }
+}
+
+/**
+ * Build a Polygon-style OCC option ticker.
+ * e.g. buildOptionTicker("TSLA", "2026-03-20", "P", 372.5) → "O:TSLA260320P00372500"
+ */
+function buildOptionTicker(underlying, expirationDate, putCall, strike) {
+  const datePart = expirationDate.replace(/-/g, '').slice(2);
+  const strikePart = Math.round(strike * 1000).toString().padStart(8, '0');
+  return `O:${underlying}${datePart}${putCall}${strikePart}`;
+}
+
+/**
+ * Fetch a single option contract snapshot from Polygon.
+ * Uses the individual contract endpoint which returns full quote/trade data.
+ *
+ * @param {string} underlying - e.g. "TSLA"
+ * @param {string} optionTicker - e.g. "O:TSLA260320P00372500"
+ * @returns {{ bid, ask, midpoint, lastTrade, iv } | null}
+ */
+async function getOptionSnapshot(underlying, optionTicker) {
+  const apiKey = getOptionsApiKey();
+
+  // Snapshot endpoint — extract price from multiple possible fields
+  const snapUrl = `${API_BASE}/v3/snapshot/options/${encodeURIComponent(underlying)}/${optionTicker}?apiKey=${apiKey}`;
+  try {
+    const res = await fetch(snapUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results) {
+        const r = data.results;
+        const quote = r.last_quote || {};
+        const trade = r.last_trade || {};
+        const day = r.day || {};
+
+        // Try multiple price sources in order of preference:
+        // 1. Bid/ask midpoint from last_quote
+        // 2. last_quote.midpoint
+        // 3. last_trade.price
+        // 4. day.vwap (available on plans without real-time quotes)
+        // 5. day.close
+        const bid = quote.bid || 0;
+        const ask = quote.ask || 0;
+        let midpoint = 0;
+        let source = 'snapshot';
+
+        if (bid > 0 && ask > 0) {
+          midpoint = (bid + ask) / 2;
+          source = 'quote_midpoint';
+        } else if (quote.midpoint > 0) {
+          midpoint = quote.midpoint;
+          source = 'quote_midpoint';
+        } else if (trade.price > 0) {
+          midpoint = trade.price;
+          source = 'last_trade';
+        } else if (day.vwap > 0) {
+          midpoint = day.vwap;
+          source = 'day_vwap';
+        } else if (day.close > 0) {
+          midpoint = day.close;
+          source = 'day_close';
+        }
+
+        if (midpoint > 0) {
+          return {
+            bid: bid || day.low || 0,
+            ask: ask || day.high || 0,
+            midpoint,
+            lastTrade: trade.price || day.close || 0,
+            fmv: r.fair_market_value || 0,
+            iv: r.implied_volatility || null,
+            source,
+          };
+        }
+      }
+    }
+  } catch (e) { /* fall through to prev close */ }
+
+  // Fallback: Previous day close
+  await sleep(RATE_LIMIT_DELAY);
+  const prevUrl = `${API_BASE}/v2/aggs/ticker/${optionTicker}/prev?adjusted=true&apiKey=${apiKey}`;
+  try {
+    const res = await fetch(prevUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const bar = data.results[0];
+        const price = bar.vw || bar.c || (bar.h && bar.l ? (bar.h + bar.l) / 2 : 0);
+        if (price > 0) {
+          return { bid: bar.l || 0, ask: bar.h || 0, midpoint: price, lastTrade: bar.c || 0, fmv: 0, iv: null, source: 'prev_close' };
+        }
+      }
+    }
+  } catch (e) { /* fall through */ }
+
+  console.warn(`[polygon] getOptionSnapshot ${optionTicker}: no price from any source`);
+  return null;
+}
+
+module.exports = { fetchDailyBars, fetchOptionsChain, fetchOptionsForExpiration, extractAtmIV, extractAtmStraddle, fetchDividends, fetchSplits, findContractPrice, roundToStrike, sleep, buildOptionTicker, getOptionSnapshot };

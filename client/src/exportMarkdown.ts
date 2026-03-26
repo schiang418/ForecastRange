@@ -313,6 +313,32 @@ export function generateForecastMarkdown(result: ForecastResult): string {
   lines.push('```');
   lines.push('');
 
+  // IV Debug Diagnostics
+  if (vm.ivDebug) {
+    lines.push('### IV History Debug Diagnostics');
+    lines.push('');
+    lines.push('```');
+    lines.push(`Total IV history rows: ${vm.ivDebug.totalRows}`);
+    lines.push(`Current IV:            ${vm.ivDebug.currentIV != null ? (vm.ivDebug.currentIV * 100).toFixed(1) + '%' : 'N/A'}`);
+    lines.push(`Below count:           ${vm.ivDebug.belowCount}/${vm.ivDebug.totalRows}`);
+    lines.push(`IV Percentile calc:    ${vm.ivDebug.ivPercentileCalc}`);
+    lines.push(`IV Rank calc:          ${vm.ivDebug.ivRankCalc}`);
+    lines.push('');
+    lines.push('IV Distribution (historical):');
+    lines.push(`  P10 = ${vm.ivDebug.distribution.p10}%`);
+    lines.push(`  P25 = ${vm.ivDebug.distribution.p25}%`);
+    lines.push(`  P50 = ${vm.ivDebug.distribution.p50}% (median)`);
+    lines.push(`  P75 = ${vm.ivDebug.distribution.p75}%`);
+    lines.push(`  P90 = ${vm.ivDebug.distribution.p90}%`);
+    lines.push('');
+    lines.push('Recent IV history entries:');
+    for (const e of vm.ivDebug.recentEntries) {
+      lines.push(`  ${e.date}: ${e.iv.toFixed(1)}%`);
+    }
+    lines.push('```');
+    lines.push('');
+  }
+
   // IV Term Structure
   if (result.ivTermStructure && result.ivTermStructure.length > 0) {
     lines.push('## IV Term Structure');
@@ -731,6 +757,19 @@ export function downloadForecastMarkdown(result: ForecastResult): void {
   a.href = url;
   const dateStr = new Date(result.generatedAt).toISOString().slice(0, 10);
   a.download = `${result.ticker}_forecast_${dateStr}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Download any text content as a .md file */
+export function downloadAnalysisMarkdown(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename.endsWith('.md') ? filename : `${filename}.md`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
