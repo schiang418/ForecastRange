@@ -85,6 +85,9 @@ export default function ForecastScreen() {
               </Text>
             </View>
 
+            {/* Target Price Percentile Lookup */}
+            <TargetPricePercentile horizons={forecast.horizons} spot={forecast.spot} />
+
             {/* Horizons */}
             {forecast.horizons.map((h, i) => (
               <HorizonCard key={i} horizon={h} />
@@ -104,9 +107,6 @@ export default function ForecastScreen() {
 
             {/* Premium Sell / Avoid Checklist */}
             <PremiumChecklist volatilityMetrics={forecast.volatilityMetrics} ticker={forecast.ticker} />
-
-            {/* Target Price Percentile Lookup */}
-            <TargetPricePercentile horizons={forecast.horizons} spot={forecast.spot} />
 
             {/* Credit Spread Pricing - On Demand */}
             {!creditSpreads && !creditSpreadsLoading && (
