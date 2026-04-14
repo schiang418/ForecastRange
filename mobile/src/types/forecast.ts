@@ -310,10 +310,11 @@ export interface SmaDeviationSingle {
   deviationPct: number;
   percentileRank: number;
   directionalPercentile: number;
-  zScore: number;
+  frequencyLabel: string;
   extension: SmaDeviationExtension;
   distribution: SmaDeviationDistribution;
   tradingDaysAnalyzed: number;
+  approxYears: number;
   histogram: { binStart: number; binEnd: number; count: number; pct: number }[];
 }
 

@@ -22,7 +22,7 @@ function sleep(ms) {
  */
 async function fetchDailyBars(ticker, fromDate, toDate) {
   const apiKey = getApiKey();
-  const url = `${API_BASE}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=5000&apiKey=${apiKey}`;
+  const url = `${API_BASE}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${apiKey}`;
 
   const res = await fetch(url);
   if (!res.ok) {
