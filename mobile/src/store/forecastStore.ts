@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
-import { ForecastResult, CompareResult, CreditSpreadPricingResult } from '../types/forecast';
+import { ForecastResult, CompareResult, CreditSpreadPricingResult, SmaDeviationResult } from '../types/forecast';
 
 const CACHE_KEY = 'forecast_cache';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -34,6 +34,11 @@ interface ForecastState {
   premiumNarrativeProgress: string | null;
   spreadsByTicker: Record<string, CreditSpreadPricingResult> | null;
 
+  // SMA Deviation analysis
+  smaDeviation: SmaDeviationResult | null;
+  smaDeviationLoading: boolean;
+  smaDeviationError: string | null;
+
   fetchForecast: (ticker: string) => Promise<void>;
   fetchComparison: (tickers: string[]) => Promise<void>;
   fetchSpreadAnalysis: (forecast: ForecastResult) => Promise<void>;
@@ -41,6 +46,7 @@ interface ForecastState {
   fetchNarrative: (comparison: CompareResult) => Promise<void>;
   fetchPremiumAnalysis: (forecast: ForecastResult) => Promise<void>;
   fetchPremiumNarrative: (comparison: CompareResult) => Promise<void>;
+  fetchSmaDeviation: (ticker: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -67,11 +73,17 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
   premiumNarrativeProgress: null,
   spreadsByTicker: null,
 
+  // SMA Deviation
+  smaDeviation: null,
+  smaDeviationLoading: false,
+  smaDeviationError: null,
+
   fetchForecast: async (ticker: string) => {
     set({
       loading: true, error: null,
       spreadAnalysis: null, creditSpreads: null, creditSpreadsError: null,
       premiumAnalysis: null, premiumAnalysisError: null,
+      smaDeviation: null, smaDeviationError: null,
     });
     try {
       // Check cache
@@ -232,6 +244,20 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
         premiumNarrativeLoading: false,
         premiumNarrativeError: error.response?.data?.error || error.message,
         premiumNarrativeProgress: null,
+      });
+    }
+  },
+
+  fetchSmaDeviation: async (ticker: string) => {
+    set({ smaDeviationLoading: true, smaDeviationError: null });
+    try {
+      const result = await api.fetchSmaDeviation(ticker);
+      set({ smaDeviation: result, smaDeviationLoading: false });
+    } catch (error: any) {
+      console.error('[smaDeviation] Error:', error.response?.status, error.response?.data?.error || error.message);
+      set({
+        smaDeviationLoading: false,
+        smaDeviationError: error.response?.data?.error || error.message,
       });
     }
   },

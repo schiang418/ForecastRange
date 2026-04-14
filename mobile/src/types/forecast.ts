@@ -288,3 +288,41 @@ export interface BatchCreditSpreadsResult {
   results: Record<string, CreditSpreadPricingResult>;
   failed?: { ticker: string; error: string }[];
 }
+
+// ── SMA Deviation types ──
+
+export interface SmaDeviationExtension {
+  zone: 'EXTREMELY_EXTENDED' | 'VERY_EXTENDED' | 'EXTENDED' | 'NORMAL' | 'COMPRESSED' | 'VERY_COMPRESSED' | 'EXTREMELY_COMPRESSED';
+  direction: 'above' | 'below';
+}
+
+export interface SmaDeviationDistribution {
+  mean: number;
+  stdDev: number;
+  min: number;
+  max: number;
+}
+
+export interface SmaDeviationSingle {
+  period: number;
+  value: number;
+  deviationDollars: number;
+  deviationPct: number;
+  percentileRank: number;
+  directionalPercentile: number;
+  zScore: number;
+  extension: SmaDeviationExtension;
+  distribution: SmaDeviationDistribution;
+  tradingDaysAnalyzed: number;
+  histogram: { binStart: number; binEnd: number; count: number; pct: number }[];
+}
+
+export interface SmaDeviationResult {
+  ticker: string;
+  date: string;
+  price: number;
+  tradingDaysAnalyzed: number;
+  sma20: SmaDeviationSingle | null;
+  sma50: SmaDeviationSingle | null;
+  interpretation: string;
+}
