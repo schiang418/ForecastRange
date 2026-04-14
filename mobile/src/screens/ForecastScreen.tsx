@@ -13,6 +13,7 @@ import UpcomingEvents from '../components/UpcomingEvents';
 import PremiumChecklist from '../components/PremiumChecklist';
 import CreditSpreadTable from '../components/CreditSpreadTable';
 import TargetPricePercentile from '../components/TargetPricePercentile';
+import DeviationCard from '../components/DeviationCard';
 import { saveAnalysisAsMarkdown } from '../utils/saveAnalysis';
 
 export default function ForecastScreen() {
@@ -22,11 +23,15 @@ export default function ForecastScreen() {
     fetchForecast, fetchSpreadAnalysis, spreadAnalysis,
     fetchCreditSpreads, creditSpreads, creditSpreadsLoading, creditSpreadsError,
     fetchPremiumAnalysis, premiumAnalysis, premiumAnalysisLoading, premiumAnalysisError,
+    smaDeviation, smaDeviationLoading, smaDeviationError, fetchSmaDeviation,
   } = useForecastStore();
 
   const handleSubmit = () => {
     const t = ticker.trim().toUpperCase();
-    if (t) fetchForecast(t);
+    if (t) {
+      fetchForecast(t);
+      fetchSmaDeviation(t);
+    }
   };
 
   return (
@@ -84,6 +89,13 @@ export default function ForecastScreen() {
                 {' '}({forecast.trendScore > 0.2 ? 'Bullish' : forecast.trendScore < -0.2 ? 'Bearish' : 'Neutral'})
               </Text>
             </View>
+
+            {/* SMA Deviation Analysis */}
+            <DeviationCard
+              deviation={smaDeviation}
+              loading={smaDeviationLoading}
+              error={smaDeviationError}
+            />
 
             {/* Target Price Percentile Lookup */}
             <TargetPricePercentile horizons={forecast.horizons} spot={forecast.spot} />
