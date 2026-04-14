@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import * as SecureStore from 'expo-secure-store';
-import { API_BASE_URL, CYCLESCOPE_API_URL, CYCLESCOPE_API_KEY } from '../config';
+import { API_BASE_URL } from '../config';
 import {
   ForecastResult, CompareResult, ChartResult, ChartPeriod,
   EventsResult, CreditSpreadPricingResult, ForecastHorizon,
@@ -11,7 +11,6 @@ const TOKEN_KEY = 'auth_token';
 
 class ApiClient {
   private client: AxiosInstance;
-  private cyclescopeClient: AxiosInstance;
 
   constructor() {
     this.client = axios.create({
@@ -27,16 +26,6 @@ class ApiClient {
         config.headers.Authorization = `Bearer ${token}`;
       }
       return config;
-    });
-
-    // CycleScope Downloader client (uses x-api-key auth)
-    this.cyclescopeClient = axios.create({
-      baseURL: CYCLESCOPE_API_URL,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': CYCLESCOPE_API_KEY,
-      },
-      timeout: 30000,
     });
   }
 
@@ -168,12 +157,10 @@ class ApiClient {
     await this.client.delete(`/api/watchlist/${ticker}`);
   }
 
-  // ── SMA Deviation (via CycleScope Downloader) ────────────
+  // ── SMA Deviation ────────────────────────────────────────
 
   async fetchSmaDeviation(ticker: string): Promise<SmaDeviationResult> {
-    const { data } = await this.cyclescopeClient.get(`/api/deviation/analyze`, {
-      params: { ticker },
-    });
+    const { data } = await this.client.post('/api/deviation', { ticker });
     return data;
   }
 

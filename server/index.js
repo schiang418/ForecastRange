@@ -8,6 +8,7 @@ const spreadsRouter = require('./routes/spreads');
 const chartRouter = require('./routes/chart');
 const eventsRouter = require('./routes/events');
 const creditSpreadsRouter = require('./routes/creditSpreads');
+const deviationRouter = require('./routes/deviation');
 const authRouter = require('./routes/auth');
 const watchlistRouter = require('./routes/watchlist');
 const { optionalAuth } = require('./middleware/auth');
@@ -26,6 +27,7 @@ app.use('/api/compare', optionalAuth, compareRouter);
 app.use('/api/forecast/spreads', optionalAuth, spreadsRouter);
 app.use('/api/chart', chartRouter);
 app.use('/api/events', eventsRouter);
+app.use('/api/deviation', deviationRouter);
 app.use('/api/forecast/credit-spread-pricing', creditSpreadsRouter);
 
 // Health check
