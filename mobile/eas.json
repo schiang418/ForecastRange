@@ -6,17 +6,26 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "node": "20.18.0"
+      "node": "20.18.0",
+      "env": {
+        "EXPO_PUBLIC_CYCLESCOPE_API_KEY": "REPLACE_WITH_YOUR_API_SECRET_KEY"
+      }
     },
     "preview": {
       "distribution": "store",
       "ios": {
         "simulator": false
       },
-      "node": "20.18.0"
+      "node": "20.18.0",
+      "env": {
+        "EXPO_PUBLIC_CYCLESCOPE_API_KEY": "REPLACE_WITH_YOUR_API_SECRET_KEY"
+      }
     },
     "production": {
-      "node": "20.18.0"
+      "node": "20.18.0",
+      "env": {
+        "EXPO_PUBLIC_CYCLESCOPE_API_KEY": "REPLACE_WITH_YOUR_API_SECRET_KEY"
+      }
     }
   },
   "submit": {
