@@ -91,6 +91,18 @@ function analyzeSingleSMA(bars, period) {
   const stdDev = Math.sqrt(variance);
   const zScore = stdDev > 0 ? (currentDev - mean) / stdDev : 0;
 
+  // Frequency label: how often does a deviation this extreme happen?
+  const pctOfTime = 100 - percentileRank;
+  let frequencyLabel;
+  if (pctOfTime <= 5) frequencyLabel = 'Extremely rare (< 5% of the time)';
+  else if (pctOfTime <= 10) frequencyLabel = 'Very rare (< 10% of the time)';
+  else if (pctOfTime <= 20) frequencyLabel = 'Uncommon (< 20% of the time)';
+  else if (pctOfTime <= 35) frequencyLabel = 'Somewhat uncommon';
+  else frequencyLabel = 'Within normal range';
+
+  // Approximate years from trading days (252 trading days per year)
+  const approxYears = parseFloat((deviations.length / 252).toFixed(1));
+
   return {
     period,
     value: parseFloat(currentSMA.toFixed(2)),
@@ -98,7 +110,7 @@ function analyzeSingleSMA(bars, period) {
     deviationPct: parseFloat(currentDev.toFixed(4)),
     percentileRank: parseFloat(percentileRank.toFixed(2)),
     directionalPercentile: parseFloat(directionalPercentile.toFixed(2)),
-    zScore: parseFloat(zScore.toFixed(4)),
+    frequencyLabel,
     extension: classifyExtension(percentileRank, currentDev),
     distribution: {
       mean: parseFloat(mean.toFixed(4)),
@@ -107,6 +119,7 @@ function analyzeSingleSMA(bars, period) {
       max: parseFloat(Math.max(...deviations).toFixed(4)),
     },
     tradingDaysAnalyzed: deviations.length,
+    approxYears,
     histogram: buildHistogram(deviations),
   };
 }

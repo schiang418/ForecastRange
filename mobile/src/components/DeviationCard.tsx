@@ -71,14 +71,14 @@ function SmaRow({ label, sma }: { label: string; sma: SmaDeviationSingle }) {
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.label}>Z-Score</Text>
-        <Text style={[styles.value, { color: Math.abs(sma.zScore) >= 2 ? colors.red : Math.abs(sma.zScore) >= 1 ? colors.orange : colors.text }]}>
-          {sma.zScore >= 0 ? '+' : ''}{sma.zScore.toFixed(2)}\u03C3
+        <Text style={styles.label}>How often this extreme?</Text>
+        <Text style={[styles.frequencyValue, { color: percentileColor(sma.percentileRank) }]}>
+          {sma.frequencyLabel}
         </Text>
       </View>
 
       <Text style={styles.percentileHint}>
-        More extreme than {sma.percentileRank.toFixed(0)}% of {sma.tradingDaysAnalyzed} trading days (~5yr)
+        More extreme than {sma.percentileRank.toFixed(0)}% of {sma.tradingDaysAnalyzed} trading days ({sma.approxYears}yr)
       </Text>
     </View>
   );
@@ -179,6 +179,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     fontFamily: 'monospace',
+  },
+  frequencyValue: {
+    fontSize: fontSize.xs,
+    fontWeight: '600',
+    color: colors.text,
   },
   percentileHint: {
     fontSize: fontSize.xs,
