@@ -70,12 +70,9 @@ function SmaRow({ label, sma }: { label: string; sma: SmaDeviationSingle }) {
         </Text>
       </View>
 
-      <View style={styles.row}>
-        <Text style={styles.label}>How often this extreme?</Text>
-        <Text style={[styles.frequencyValue, { color: percentileColor(sma.percentileRank) }]}>
-          {sma.frequencyLabel}
-        </Text>
-      </View>
+      <Text style={[styles.frequencyLabel, { color: percentileColor(sma.percentileRank) }]}>
+        {sma.frequencyLabel}
+      </Text>
 
       <Text style={styles.percentileHint}>
         More extreme than {sma.percentileRank.toFixed(0)}% of {sma.tradingDaysAnalyzed} trading days ({sma.approxYears}yr)
@@ -180,10 +177,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: 'monospace',
   },
-  frequencyValue: {
-    fontSize: fontSize.xs,
+  frequencyLabel: {
+    fontSize: fontSize.sm,
     fontWeight: '600',
-    color: colors.text,
+    marginTop: spacing.xs,
   },
   percentileHint: {
     fontSize: fontSize.xs,
