@@ -8,7 +8,7 @@ import Svg, {
 } from 'react-native-svg';
 import { colors, spacing, fontSize } from '../config/theme';
 import { api } from '../services/api';
-import { ChartBar, ChartPeriod } from '../types/forecast';
+import { ChartBar, ChartMarker, ChartPeriod } from '../types/forecast';
 
 interface Props {
   ticker: string;
@@ -40,6 +40,7 @@ function formatDateShort(dateStr: string): string {
 export default function PriceHistoryChart({ ticker }: Props) {
   const [period, setPeriod] = useState<ChartPeriod>('6m');
   const [bars, setBars] = useState<ChartBar[]>([]);
+  const [markers, setMarkers] = useState<ChartMarker[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartType, setChartType] = useState<'candle' | 'line'>('candle');
@@ -50,7 +51,11 @@ export default function PriceHistoryChart({ ticker }: Props) {
     setLoading(true);
     setError(null);
     api.fetchChart(ticker, period)
-      .then((data) => { if (!cancelled) setBars(data.bars); })
+      .then((data) => {
+        if (cancelled) return;
+        setBars(data.bars);
+        setMarkers(data.markers ?? []);
+      })
       .catch((err) => { if (!cancelled) setError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -165,6 +170,18 @@ export default function PriceHistoryChart({ ticker }: Props) {
   const rsiPath = buildRSIPath();
   const closePath = buildPricePath((b) => b.close);
 
+  // Marker placement: map date → bar index so we can position diamonds above
+  // the right bar without depending on equal spacing assumptions.
+  const dateToIdx = new Map<string, number>();
+  bars.forEach((b, i) => dateToIdx.set(b.date, i));
+  const placedMarkers = markers
+    .map((m) => {
+      const idx = dateToIdx.get(m.date);
+      if (idx == null) return null;
+      return { ...m, idx };
+    })
+    .filter((m): m is ChartMarker & { idx: number } => m != null);
+
   // Latest bar info
   const latest = bars[bars.length - 1];
   const isUp = latest.close >= latest.open;
@@ -256,6 +273,25 @@ export default function PriceHistoryChart({ ticker }: Props) {
             closePath ? <Path d={closePath} fill="none" stroke="#26a69a" strokeWidth={1.5} /> : null
           )}
 
+          {/* MRC top markers (watch + confirmed) */}
+          {placedMarkers.map((m, k) => {
+            const cx = xScale(m.idx);
+            const cy = priceYScale(m.price) - 10;
+            const size = m.type === 'confirmed' ? 5 : 4;
+            const d = `M ${cx} ${cy - size} L ${cx + size} ${cy} L ${cx} ${cy + size} L ${cx - size} ${cy} Z`;
+            const fill = m.type === 'confirmed' ? '#a855f7' : 'transparent';
+            const stroke = m.type === 'confirmed' ? '#a855f7' : '#eab308';
+            return (
+              <Path
+                key={`mk${k}`}
+                d={d}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth={m.type === 'confirmed' ? 0.8 : 1.4}
+              />
+            );
+          })}
+
           {/* RSI separator */}
           <Line x1={marginLeft} y1={rsiTop} x2={totalWidth - marginRight} y2={rsiTop} stroke="#2a2e3a" strokeWidth={0.5} />
 
@@ -293,6 +329,8 @@ export default function PriceHistoryChart({ ticker }: Props) {
         <Text style={[styles.legendItem, { color: '#06b6d4' }]}>SMA200</Text>
         <Text style={[styles.legendItem, { color: '#4f8ff7' }]}>BB</Text>
         <Text style={[styles.legendItem, { color: '#eab308' }]}>RSI</Text>
+        <Text style={[styles.legendItem, { color: '#eab308' }]}>◇ Watch</Text>
+        <Text style={[styles.legendItem, { color: '#a855f7' }]}>◆ Top</Text>
       </View>
     </View>
   );

@@ -1,7 +1,12 @@
 const express = require('express');
 const { fetchDailyBars } = require('../../src/polygon');
+const { mrcTopSignals } = require('../../src/mrcSignals');
 
 const router = express.Router();
+
+// ~5 years of calendar days, used as extra warm-up so the MRC SuperSmoother(200)
+// and the SMA20-deviation percentile lookback (~1260 trading days) are populated.
+const MRC_WARMUP_DAYS = 1825;
 
 /**
  * Compute full SMA series for all bars.
@@ -108,7 +113,8 @@ router.post('/', async (req, res) => {
       '1y': 365 + 300,
       '2y': 730 + 300,
     };
-    const totalDays = periodDays[period] || periodDays['6m'];
+    const baseDays = periodDays[period] || periodDays['6m'];
+    const totalDays = baseDays + MRC_WARMUP_DAYS;
 
     const toDate = new Date().toISOString().slice(0, 10);
     const fromDate = new Date(Date.now() - totalDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -129,6 +135,9 @@ router.post('/', async (req, res) => {
     const sma200Series = smaSeries(closes, 200);
     const bbSeries = bollingerSeries(closes, 20, 2);
     const rsi14Series = rsiSeries(closes, 14);
+
+    // MRC top markers (watch + confirmed) computed over full pre-warmed series.
+    const mrc = mrcTopSignals(bars);
 
     // Trim warm-up bars (first 50 entries may lack indicators)
     // Only return the requested visible period
@@ -162,10 +171,23 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Emit markers only for the visible window; place 'watch' above the bar's
+    // high and 'confirmed' above the bar's high (rendered as diamonds in the UI).
+    const markers = [];
+    for (let i = startIdx; i < bars.length; i++) {
+      if (mrc.watch[i]) {
+        markers.push({ date: bars[i].date, type: 'watch', price: bars[i].h });
+      }
+      if (mrc.confirmed[i]) {
+        markers.push({ date: bars[i].date, type: 'confirmed', price: bars[i].h });
+      }
+    }
+
     res.json({
       ticker: cleanTicker,
       period,
       bars: chartData,
+      markers,
     });
   } catch (err) {
     console.error('[chart] Error:', err);

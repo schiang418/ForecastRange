@@ -228,10 +228,17 @@ export interface ChartBar {
   rsi14: number | null;
 }
 
+export interface ChartMarker {
+  date: string;
+  type: 'watch' | 'confirmed';
+  price: number;
+}
+
 export interface ChartResult {
   ticker: string;
   period: ChartPeriod;
   bars: ChartBar[];
+  markers?: ChartMarker[];
 }
 
 // ── Event types ──
