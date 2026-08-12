@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import * as storage from './storage';
 import { API_BASE_URL } from '../config';
 import {
   ForecastResult, CompareResult, ChartResult, ChartPeriod,
@@ -21,7 +21,7 @@ class ApiClient {
 
     // Attach auth token to every request
     this.client.interceptors.request.use(async (config) => {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      const token = await storage.getItem(TOKEN_KEY);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -33,13 +33,13 @@ class ApiClient {
 
   async loginWithApple(identityToken: string, fullName?: { givenName?: string; familyName?: string }) {
     const { data } = await this.client.post('/api/auth/apple', { identityToken, fullName });
-    await SecureStore.setItemAsync(TOKEN_KEY, data.token);
+    await storage.setItem(TOKEN_KEY, data.token);
     return data.user;
   }
 
   async loginWithGoogle(idToken: string) {
     const { data } = await this.client.post('/api/auth/google', { idToken });
-    await SecureStore.setItemAsync(TOKEN_KEY, data.token);
+    await storage.setItem(TOKEN_KEY, data.token);
     return data.user;
   }
 
@@ -50,15 +50,15 @@ class ApiClient {
 
   async refreshToken() {
     const { data } = await this.client.post('/api/auth/refresh');
-    await SecureStore.setItemAsync(TOKEN_KEY, data.token);
+    await storage.setItem(TOKEN_KEY, data.token);
   }
 
   async logout() {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await storage.deleteItem(TOKEN_KEY);
   }
 
   async hasToken(): Promise<boolean> {
-    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    const token = await storage.getItem(TOKEN_KEY);
     return !!token;
   }
 

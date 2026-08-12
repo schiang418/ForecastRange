@@ -35,6 +35,17 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Phone app at /m — the Expo web export of mobile/ (same UI as the iOS app,
+// no TestFlight / no 90-day expiry; save the URL to the home screen). Must be
+// mounted BEFORE the web-dashboard catch-all. Index is served no-cache so
+// home-screen saves pick up redeploys; the hashed JS bundle is cacheable.
+const mobileWebPath = path.join(__dirname, '..', 'web-m');
+app.get(['/m', '/m/'], (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(path.join(mobileWebPath, 'index.html'));
+});
+app.use('/m', express.static(mobileWebPath));
+
 // Serve React build in production
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));

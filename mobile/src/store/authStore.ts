@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { api } from '../services/api';
 
@@ -44,6 +45,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const hasToken = await api.hasToken();
       if (!hasToken) {
+        // Web (the /m pseudo-app) has no Apple/Google sign-in; the data routes
+        // are open, so enter as a local guest instead of dead-ending at login.
+        if (Platform.OS === 'web') {
+          set({ user: { id: 0, email: null, name: 'Guest', provider: 'web' }, initialized: true });
+          return;
+        }
         set({ initialized: true });
         return;
       }
